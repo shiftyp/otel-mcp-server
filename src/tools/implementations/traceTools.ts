@@ -136,12 +136,11 @@ export function registerTraceTools(server: McpServer, esAdapter: ElasticsearchAd
       }
       
       const mermaid = mermaidLines.join('\n');
-      const mermaid_markdown = '```mermaid\n' + mermaid + '\n```';
       
       const output: MCPToolOutput = {
         content: [{
           type: 'text',
-          text: JSON.stringify({ edges, mermaid, mermaid_markdown }, null, 2)
+          text: JSON.stringify({ edges, mermaid }, null, 2)
         }]
       };
       
