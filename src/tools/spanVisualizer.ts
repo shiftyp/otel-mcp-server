@@ -156,7 +156,8 @@ export class SpanVisualizerTool {
       }
       
       if (!serviceNodes.has(service)) {
-        const nodeId = `service_${service.replace(/[^a-zA-Z0-9]/g, '_')}`;  
+        // Create a simple, sanitized ID for the service
+        const nodeId = `svc_${serviceNodes.size + 1}`;
         serviceNodes.set(service, nodeId);
         if (!serviceSpans.has(service)) {
           serviceSpans.set(service, []);
@@ -169,16 +170,24 @@ export class SpanVisualizerTool {
       serviceSpans.set(service, spans);
     }
     
-    // Add service nodes
+    // Add service nodes with simple IDs and descriptive labels
     for (const [service, nodeId] of serviceNodes.entries()) {
       const spanCount = serviceSpans.get(service)?.length || 0;
+      // Use simple node ID with a descriptive label
       mermaidLines.push(`  ${nodeId}["${service} (${spanCount} spans)"]`);
     }
     
-    // Add nodes for each span
+    // Add nodes for each span with simple IDs
+    let spanNodeCounter = 1;
+    const spanNodeIds = new Map<string, string>();
+    
     for (const span of allSpans) {
       const spanId = span.SpanId;
       const name = span.Name || 'unnamed';
+      
+      // Create a simple ID for the span
+      const spanNodeId = `span_${spanNodeCounter++}`;
+      spanNodeIds.set(spanId, spanNodeId);
       
       // Determine the service name using the same logic as above
       let service = 'unknown';
@@ -191,33 +200,43 @@ export class SpanVisualizerTool {
       }
       
       const serviceNodeId = serviceNodes.get(service) || serviceNodes.get('unknown') || 'unknown';
-      const spanNodeId = `span_${spanId}`;
       
       // Highlight the target span
       const isTargetSpan = spanId === targetSpan.SpanId;
-      const style = isTargetSpan ? ' style span_' + spanId + ' fill:#f96,stroke:#333,stroke-width:2' : '';
       
-      // Add the span node
-      mermaidLines.push(`  ${spanNodeId}("${name}")${style}`);
+      // Add the span node with a simple ID and descriptive label
+      mermaidLines.push(`  ${spanNodeId}["${name}"]`);
       
       // Connect span to its service
       mermaidLines.push(`  ${serviceNodeId} --> ${spanNodeId}`);
+    }
+    
+    // Second pass: connect spans to their parents
+    for (const span of allSpans) {
+      const spanId = span.SpanId;
+      const spanNodeId = spanNodeIds.get(spanId);
+      if (!spanNodeId) continue;
       
       // Connect span to its parent if it exists
       const parentSpanId = span.ParentSpanId;
-      if (parentSpanId && spanMap.has(parentSpanId)) {
-        const edgeKey = `${parentSpanId}->${spanId}`;
-        if (!processedEdges.has(edgeKey)) {
-          const parentNodeId = `span_${parentSpanId}`;
-          mermaidLines.push(`  ${parentNodeId} --> ${spanNodeId}`);
-          processedEdges.add(edgeKey);
+      if (parentSpanId) {
+        const parentNodeId = spanNodeIds.get(parentSpanId);
+        if (parentNodeId) {
+          const edgeKey = `${parentSpanId}->${spanId}`;
+          if (!processedEdges.has(edgeKey)) {
+            mermaidLines.push(`  ${parentNodeId} --> ${spanNodeId}`);
+            processedEdges.add(edgeKey);
+          }
         }
       }
     }
     
-    // Add a legend for the target span
-    mermaidLines.push('  classDef targetSpan fill:#f96,stroke:#333,stroke-width:2');
-    mermaidLines.push(`  class span_${targetSpan.SpanId} targetSpan`);
+    // Highlight the target span using a class
+    const targetNodeId = spanNodeIds.get(targetSpan.SpanId);
+    if (targetNodeId) {
+      mermaidLines.push('  classDef targetSpan fill:#f96,stroke:#333,stroke-width:2');
+      mermaidLines.push(`  class ${targetNodeId} targetSpan`);
+    }
     
     return mermaidLines.join('\n');
   }

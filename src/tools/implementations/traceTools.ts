@@ -59,49 +59,92 @@ export function registerTraceTools(server: McpServer, esAdapter: ElasticsearchAd
         logger.info('[MCP TOOL] service.dependency.graph: No service dependencies found.', { args });
         return { content: [{ type: 'text', text: 'No service dependencies found.' }] } as MCPToolOutput;
       }
+      
       // Build mermaid syntax for the service map
-      // Example: "A --> B"
       const mermaidLines = ["flowchart TD"];
+      
+      // Create a map of service names to simple IDs
+      const serviceIds = new Map<string, string>();
+      const serviceHasError = new Map<string, boolean>();
+      
+      // First pass: collect all unique services and assign simple IDs
+      const allServices = new Set<string>();
       for (const edge of edges) {
-        // Sanitize service names for Mermaid - replace spaces and special characters
-        // For node names with spaces or special chars, we need to use quotes or IDs
-        const fromId = `service_${edge.parent?.replace(/[^a-zA-Z0-9]/g, '_') || 'unknown'}`;
-        const toId = `service_${edge.child?.replace(/[^a-zA-Z0-9]/g, '_') || 'unknown'}`;
-        const fromLabel = edge.parent || 'unknown';
-        const toLabel = edge.child || 'unknown';
+        allServices.add(edge.parent);
+        allServices.add(edge.child);
         
-        // Add node definitions with proper labels
-        mermaidLines.push(`${fromId}["${fromLabel}"]`);
-        mermaidLines.push(`${toId}["${toLabel}"]`);
+        // Track services with errors
+        if (edge.errorRate && edge.errorRate > 0) {
+          serviceHasError.set(edge.parent, true);
+          serviceHasError.set(edge.child, true);
+        }
+      }
+      
+      // Assign simple sequential IDs to services
+      Array.from(allServices).forEach((service, index) => {
+        // Create a simple sequential ID
+        const simpleId = `service${index + 1}`;
+        serviceIds.set(service, simpleId);
+      });
+      
+      // Second pass: add node definitions with descriptive labels
+      for (const service of allServices) {
+        const id = serviceIds.get(service) || `service${serviceIds.size + 1}`;
+        mermaidLines.push(`  ${id}["${service}"]`);
+      }
+      
+      // Third pass: add edges between services
+      for (const edge of edges) {
+        const fromId = serviceIds.get(edge.parent) || 'unknown';
+        const toId = serviceIds.get(edge.child) || 'unknown';
         
         // Build the edge label
         let label = '';
         const countLabel = typeof edge.count === 'number' ? `${edge.count}` : '';
         let successLabel = '';
         let errorLabel = '';
+        
         if (typeof edge.count === 'number' && edge.count > 0) {
           const errorPct = Math.round((edge.errorRate || 0) * 100);
           const successPct = 100 - errorPct;
-          successLabel = `, success: ${successPct}%`;
+          
           if (edge.errorRate && edge.errorRate > 0) {
-            errorLabel = `, err: ${edge.errorCount} (${errorPct}%)`;
+            errorLabel = ` (${errorPct}% err)`;
           }
         }
-        if (countLabel || successLabel || errorLabel) {
-          label = `|${countLabel}${successLabel}${errorLabel}|`;
+        
+        if (countLabel || errorLabel) {
+          label = `|${countLabel}${errorLabel}|`;
         }
         
-        // Add the edge with the IDs
-        mermaidLines.push(`${fromId} -->${label} ${toId}`);
+        // Add the edge
+        mermaidLines.push(`  ${fromId} -->${label} ${toId}`);
       }
+      
+      // Add styling for services with errors
+      mermaidLines.push('  classDef error fill:#f96,stroke:#333,stroke-width:2');
+      
+      // Apply error styling to services with errors
+      const errorServices = Array.from(serviceHasError.entries())
+        .filter(([_, hasError]) => hasError)
+        .map(([service, _]) => serviceIds.get(service))
+        .filter(id => id) // Filter out undefined IDs
+        .join(',');
+      
+      if (errorServices) {
+        mermaidLines.push(`  class ${errorServices} error`);
+      }
+      
       const mermaid = mermaidLines.join('\n');
       const mermaid_markdown = '```mermaid\n' + mermaid + '\n```';
+      
       const output: MCPToolOutput = {
         content: [{
           type: 'text',
           text: JSON.stringify({ edges, mermaid, mermaid_markdown }, null, 2)
         }]
       };
+      
       logger.info('[MCP TOOL] service.dependency.graph output', { output });
       return output;
     }
