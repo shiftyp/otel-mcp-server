@@ -3,7 +3,7 @@ import { logger } from '../../utils/logger.js';
 import type { MCPToolOutput } from '../../types.js';
 import type { McpServer } from '@modelcontextprotocol/sdk/server/mcp.js';
 import { ElasticsearchAdapter } from '../../adapters/elasticsearch/index.js';
-import { AnomalyDetectionTool } from '../anomalyDetection.js';
+import { AnomalyDetectionTool } from '../anomalyDetection/index.js';
 import { OtelMetricsTools } from '../otelMetrics.js';
 
 /**

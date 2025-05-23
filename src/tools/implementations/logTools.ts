@@ -5,7 +5,7 @@ import type { McpServer } from '@modelcontextprotocol/sdk/server/mcp.js';
 import { ElasticsearchAdapter } from '../../adapters/elasticsearch/index.js';
 import { IncidentGraphTool } from '../incidentGraph.js';
 import { LogFieldsTool } from '../logFields.js';
-import { LogAnomalyDetectionTool } from '../logAnomalyDetection.js';
+import { LogAnomalyDetectionTool } from '../logAnomalyDetection/index.js';
 
 /**
  * Register log-related tools with the MCP server
@@ -207,7 +207,7 @@ export function registerLogTools(server: McpServer, esAdapter: ElasticsearchAdap
       endTime: z.string().describe('End time (ISO 8601) - The end of the time window to analyze.'),
       service: z.string().optional().describe('Service name (optional) - The service whose logs to analyze. If not provided, logs from all services will be included unless services array is specified.'),
       services: z.array(z.string()).optional().describe('Services array (optional) - Multiple services whose logs to analyze. Takes precedence over service parameter if both are provided.'),
-      methods: z.array(z.enum(['frequency', 'pattern', 'statistical', 'clustering'])).optional().describe('Detection methods to use (optional) - Array of methods to apply. Default is all methods.'),
+      methods: z.array(z.enum(['frequency', 'pattern', 'statistical', 'clustering'])).optional().describe('Detection methods to use (optional) - Array of methods to apply. Default is all methods. For pattern detection, provide patternKeywords and includeDefaultPatterns. For clustering detection, provide maxResults. For statistical detection, provide zScoreThreshold and percentileThreshold. For frequency detection, provide spikeThreshold. For cardinality detection, provide cardinalityThreshold. For anomaly detection, provide anomalyThreshold. For outlier detection, provide outlierThreshold.'),
       lookbackWindow: z.string().optional().describe('Lookback window (optional) - Time window for baseline, e.g., "7d" for 7 days. Default is "7d".'),
       interval: z.string().optional().describe('Interval (optional) - Time bucket size for analysis, e.g., "1h" for hourly. Default is "1h".'),
       spikeThreshold: z.number().optional().describe('Spike threshold (optional) - Multiplier above baseline to consider anomalous. Default is 3.'),
