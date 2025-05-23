@@ -63,8 +63,18 @@ export function registerTraceTools(server: McpServer, esAdapter: ElasticsearchAd
       // Example: "A --> B"
       const mermaidLines = ["flowchart TD"];
       for (const edge of edges) {
-        const from = edge.parent || 'unknown';
-        const to = edge.child || 'unknown';
+        // Sanitize service names for Mermaid - replace spaces and special characters
+        // For node names with spaces or special chars, we need to use quotes or IDs
+        const fromId = `service_${edge.parent?.replace(/[^a-zA-Z0-9]/g, '_') || 'unknown'}`;
+        const toId = `service_${edge.child?.replace(/[^a-zA-Z0-9]/g, '_') || 'unknown'}`;
+        const fromLabel = edge.parent || 'unknown';
+        const toLabel = edge.child || 'unknown';
+        
+        // Add node definitions with proper labels
+        mermaidLines.push(`${fromId}["${fromLabel}"]`);
+        mermaidLines.push(`${toId}["${toLabel}"]`);
+        
+        // Build the edge label
         let label = '';
         const countLabel = typeof edge.count === 'number' ? `${edge.count}` : '';
         let successLabel = '';
@@ -80,7 +90,9 @@ export function registerTraceTools(server: McpServer, esAdapter: ElasticsearchAd
         if (countLabel || successLabel || errorLabel) {
           label = `|${countLabel}${successLabel}${errorLabel}|`;
         }
-        mermaidLines.push(`${from} -->${label} ${to}`);
+        
+        // Add the edge with the IDs
+        mermaidLines.push(`${fromId} -->${label} ${toId}`);
       }
       const mermaid = mermaidLines.join('\n');
       const mermaid_markdown = '```mermaid\n' + mermaid + '\n```';
