@@ -1,0 +1,96 @@
+opentelemetry-collector:
+  config:
+    exporters:
+      elasticsearch:
+        endpoint: http://elasticsearch-nginx-proxy:80
+    receivers:
+      prometheus:
+        config:
+          scrape_configs:
+          - job_name: opentelemetry-collector
+            scrape_interval: 10s
+            static_configs:
+            - targets:
+              - ${env:MY_POD_IP}:8888
+      redis:
+        collection_interval: 10s
+        endpoint: valkey-cart:6379
+      zipkin:
+        endpoint: ${env:MY_POD_IP}:9411
+      jaeger:
+        protocols:
+          grpc:
+            endpoint: ${env:MY_POD_IP}:14250
+          thrift_compact:
+            endpoint: ${env:MY_POD_IP}:6831
+          thrift_http:
+            endpoint: ${env:MY_POD_IP}:14268
+      otlp:
+        protocols:
+          grpc:
+            endpoint: ${env:MY_POD_IP}:4317
+          http:
+            cors:
+              allowed_origins:
+              - http://*
+              - https://*
+            endpoint: ${env:MY_POD_IP}:4318
+    service:
+      extensions:
+        - health_check
+      pipelines:
+        logs:
+          exporters:
+          - opensearch
+          - debug
+          - elasticsearch
+          processors:
+          - k8sattributes
+          - memory_limiter
+          - resource
+          - batch
+          receivers:
+          - otlp
+        metrics:
+          exporters:
+          - otlphttp/prometheus
+          - debug
+          - elasticsearch
+          processors:
+          - k8sattributes
+          - memory_limiter
+          - resource
+          - batch
+          receivers:
+          - httpcheck/frontend-proxy
+          - redis
+          - otlp
+          - spanmetrics
+        traces:
+          exporters:
+          - otlp
+          - debug
+          - spanmetrics
+          - elasticsearch
+          processors:
+          - k8sattributes
+          - memory_limiter
+          - resource
+          - transform
+          - batch
+          receivers:
+          - otlp
+          - jaeger
+          - zipkin
+      telemetry:
+        metrics:
+          address: ${env:MY_POD_IP}:8888
+          level: detailed
+          readers:
+          - periodic:
+              exporter:
+                otlp:
+                  endpoint: otel-collector:4318
+                  protocol: grpc
+              interval: 10000
+              timeout: 5000

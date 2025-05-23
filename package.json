@@ -1,0 +1,35 @@
+{
+  "name": "otel-mcp-server",
+  "version": "0.1.0",
+  "main": "dist/server.js",
+  "scripts": {
+    "start": "node dist/server.js",
+    "build": "tsc",
+    "clean": "rm -rf dist",
+    "dev": "tsx watch src/server.ts",
+    "prepublishOnly": "tsc --build --clean && tsc --build"
+  },
+  "type": "module",
+  "exports": {
+    "./package.json": "./package.json"
+  },
+  "dependencies": {
+    "@elastic/elasticsearch": "^9.0.2",
+    "@modelcontextprotocol/sdk": "^1.11.5",
+    "@types/node": "^20.11.30",
+    "@types/ws": "^8.5.10",
+    "axios": "^1.7.2",
+    "dotenv": "^16.4.5",
+    "tslib": "^2.6.2",
+    "uuid": "^11.1.0",
+    "ws": "^8.17.0"
+  },
+  "devDependencies": {
+    "@types/express": "^5.0.2",
+    "@types/uuid": "^10.0.0",
+    "ts-node": "^10.9.2",
+    "ts-node-dev": "^2.0.0",
+    "tsx": "^4.19.4",
+    "typescript": "^5.4.5"
+  }
+}
