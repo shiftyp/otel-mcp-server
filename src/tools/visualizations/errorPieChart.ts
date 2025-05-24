@@ -79,7 +79,7 @@ export class ErrorPieChartTool {
   /**
    * Generate a Mermaid pie chart showing error distribution by service
    */
-  private async generateErrorPieChart(
+  public async generateErrorPieChart(
     startTime: string,
     endTime: string,
     services?: string[],

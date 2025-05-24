@@ -55,8 +55,17 @@ export class MarkdownVisualizationsTool {
     showData: boolean,
     title: string
   ): Promise<string> {
-    // Create a simple error pie chart markdown
-    return '```mermaid\npie title ' + title + '\n    "Sample Error 1" : 50\n    "Sample Error 2" : 30\n    "Sample Error 3" : 20\n```';
+    const mermaidChart = await this.errorPieChartTool.generateErrorPieChart(
+      startTime,
+      endTime,
+      services,
+      title,
+      showData,
+      maxResults
+    );
+    
+    // Return the mermaid chart wrapped in a code block
+    return '```mermaid\n' + mermaidChart + '\n```';
   }
 
   /**
@@ -67,15 +76,28 @@ export class MarkdownVisualizationsTool {
     endTime: string,
     services: string[],
     metricField: string,
-    aggregation?: string,
+    aggregation: 'avg' | 'min' | 'max' | 'sum' = 'avg',
     title?: string,
     yAxisLabel?: string,
     yMin?: number,
     yMax?: number,
     intervalCount?: number
   ): Promise<string> {
-    // Create a simple service health chart
-    return '```mermaid\nxychart-beta\n    title "' + (title || 'Service Health') + '"\n    x-axis ["00:00", "04:00", "08:00", "12:00", "16:00", "20:00"]\n    y-axis "' + (yAxisLabel || 'Value') + '" ' + (yMin || 0) + ' --> ' + (yMax || 100) + '\n    line [10, 20, 30, 40, 50, 60]\n    title "' + (services[0] || 'Service') + '"\n```';
+    const mermaidChart = await this.serviceHealthChartTool.generateServiceHealthChart(
+      startTime,
+      endTime,
+      services,
+      metricField,
+      aggregation,
+      title,
+      yAxisLabel,
+      yMin,
+      yMax,
+      intervalCount
+    );
+    
+    // Return the mermaid chart wrapped in a code block
+    return '```mermaid\n' + mermaidChart + '\n```';
   }
 
   /**
