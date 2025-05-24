@@ -4,6 +4,7 @@ import { registerBasicTools } from './basicTools.js';
 import { registerTraceTools } from './traceTools.js';
 import { registerMetricTools } from './metricTools.js';
 import { registerLogTools } from './logTools.js';
+import { registerVisualizationTools } from '../visualizations/index.js';
 import { ElasticGuards, ElasticsearchDataError } from '../../utils/elasticGuards.js';
 import { logger } from '../../utils/logger.js';
 
@@ -68,5 +69,16 @@ export async function registerAllTools(server: McpServer, esAdapter: Elasticsear
         stack: error instanceof Error ? error.stack : undefined
       });
     }
+  }
+  
+  // Register visualization tools
+  try {
+    logger.info('Registering visualization tools for dashboards');
+    registerVisualizationTools(server, esAdapter);
+  } catch (error) {
+    logger.error('Error registering visualization tools', {
+      error: error instanceof Error ? error.message : String(error),
+      stack: error instanceof Error ? error.stack : undefined
+    });
   }
 }

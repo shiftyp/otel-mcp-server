@@ -50,7 +50,7 @@ export class MetricsAdapter extends ElasticsearchCore {
    * @param metricField Optional metric field to aggregate (e.g., 'metric.value')
    * @param service Optional service name to filter by
    */
-  public async aggregateOtelMetricsRange(
+  public  async aggregateOtelMetricsRange(
     startTime: string, 
     endTime: string, 
     metricField?: string, 
@@ -84,55 +84,52 @@ export class MetricsAdapter extends ElasticsearchCore {
     
     // Add service filter if provided - support multiple service name field patterns
     if (service) {
-      query.bool.must.push({
-        bool: {
-          should: [
-            { term: { 'Resource.service.name': service } },
-            { term: { 'resource.attributes.service.name': service } },
-            { term: { 'service.name': service } }
-          ],
-          minimum_should_match: 1
-        }
-      });
+      // Special handling for Redis metrics
+      if (service.toLowerCase() === 'redis' && metricField && metricField.startsWith('redis.')) {
+        // For Redis metrics, we don't filter by service name since they don't have a standard service field
+        // Instead, we rely on the metricField filter which is already added above
+      } else {
+        // For other services, use the standard service name fields
+        query.bool.must.push({
+          bool: {
+            should: [
+              { term: { 'Resource.service.name': service } },
+              { term: { 'resource.attributes.service.name': service } },
+              { term: { 'service.name': service } }
+            ],
+            minimum_should_match: 1
+          }
+        });
+      }
     }
+    
+    // Determine the field to use for aggregation
+    const fieldToAggregate = metricField || 'metric.value';
     
     // Execute the query against all possible metrics indices
     const response = await this.request('POST', '/metrics*,*metrics*/_search', {
       size: 0,
       query,
       aggs: {
-        metrics: {
-          terms: {
-            field: metricField ? 'metric.name.keyword' : 'metric.name.keyword',
-            size: 100
+        by_time: {
+          date_histogram: {
+            field: '@timestamp',
+            fixed_interval: '1h'
           },
           aggs: {
             avg_value: {
               avg: {
-                field: metricField || 'metric.value'
+                field: fieldToAggregate
               }
             },
             min_value: {
               min: {
-                field: metricField || 'metric.value'
+                field: fieldToAggregate
               }
             },
             max_value: {
               max: {
-                field: metricField || 'metric.value'
-              }
-            },
-            by_time: {
-              date_histogram: {
-                field: '@timestamp',
-                fixed_interval: '1m'
-              },
-              aggs: {
-                value: {
-                  avg: {
-                    field: metricField || 'metric.value'
-                  }
-                }
+                field: fieldToAggregate
               }
             }
           }
@@ -142,18 +139,17 @@ export class MetricsAdapter extends ElasticsearchCore {
     
     // Process and return the results
     const results: string[] = [];
-    const metrics = response.aggregations?.metrics?.buckets || [];
+    const timeBuckets = response.aggregations?.by_time?.buckets || [];
     
-    for (const metric of metrics) {
+    // If we have time buckets, create a single result with timeseries data
+    if (timeBuckets.length > 0) {
       results.push(JSON.stringify({
-        metric: metric.key,
-        field: metricField || 'metric.value',
-        avg: metric.avg_value?.value,
-        min: metric.min_value?.value,
-        max: metric.max_value?.value,
-        timeseries: metric.by_time?.buckets?.map((bucket: any) => ({
+        field: fieldToAggregate,
+        timeseries: timeBuckets.map((bucket: any) => ({
           timestamp: bucket.key_as_string,
-          value: bucket.value?.value
+          value: bucket.avg_value?.value,
+          min: bucket.min_value?.value,
+          max: bucket.max_value?.value
         }))
       }));
     }
