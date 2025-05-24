@@ -214,6 +214,8 @@ export function registerMetricTools(server: McpServer, esAdapter: ElasticsearchA
       percentileThreshold: z.number().optional().describe('Percentile threshold (default: 95) - Flag values above this percentile.'),
       iqrMultiplier: z.number().optional().describe('IQR multiplier (default: 1.5) - For IQR-based outlier detection.'),
       changeThreshold: z.number().optional().describe('Rate of change threshold as percentage (default: 50) - Flag sudden changes.'),
+      significancePValue: z.number().optional().describe('Significance p-value (default: 0.05) - Statistical significance level for rare value detection.'),
+      rareTransitionPValue: z.number().optional().describe('Rare transition p-value (default: 0.03) - Significance level for rare transitions between values.'),
       interval: z.string().optional().describe('Time interval for buckets (default: "1m").'),
       maxResults: z.number().optional().describe('Maximum number of results to return (default: 100).')
     },
@@ -228,6 +230,8 @@ export function registerMetricTools(server: McpServer, esAdapter: ElasticsearchA
       percentileThreshold?: number,
       iqrMultiplier?: number,
       changeThreshold?: number,
+      significancePValue?: number,
+      rareTransitionPValue?: number,
       interval?: string,
       maxResults?: number
     }) => {
@@ -237,6 +241,8 @@ export function registerMetricTools(server: McpServer, esAdapter: ElasticsearchA
         percentileThreshold: args.percentileThreshold,
         iqrMultiplier: args.iqrMultiplier,
         changeThreshold: args.changeThreshold,
+        significancePValue: args.significancePValue,
+        rareTransitionPValue: args.rareTransitionPValue,
         interval: args.interval,
         maxResults: args.maxResults
       };
@@ -291,6 +297,7 @@ export function registerMetricTools(server: McpServer, esAdapter: ElasticsearchA
       zScoreThreshold: z.number().optional().describe('Z-score threshold (default: 3) - Number of standard deviations above mean to flag as anomaly.'),
       percentileThreshold: z.number().optional().describe('Percentile threshold (default: 95) - Flag spans above this percentile.'),
       iqrMultiplier: z.number().optional().describe('IQR multiplier (default: 1.5) - For IQR-based outlier detection.'),
+      significancePValue: z.number().optional().describe('Significance p-value (default: 0.05) - Statistical significance level for rare event detection.'),
       maxResults: z.number().optional().describe('Maximum number of results to return (default: 100).'),
       groupByOperation: z.boolean().optional().describe('Whether to analyze each operation separately (default: true).')
     },

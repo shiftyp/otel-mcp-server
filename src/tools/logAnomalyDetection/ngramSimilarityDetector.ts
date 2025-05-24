@@ -37,7 +37,8 @@ export class NgramSimilarityDetector {
       const {
         interval = '1h',
         spikeThreshold = 3,
-        maxResults = 100
+        maxResults = 100,
+        significancePValue = 0.05
       } = options;
       
       // Build query conditions
@@ -82,6 +83,9 @@ export class NgramSimilarityDetector {
         
         // Skip very short terms
         if (typeof term !== 'string' || term.length < 5) continue;
+        
+        // Skip terms that aren't statistically significant based on p-value
+        if (termBucket.doc_count / termsResp.hits?.total?.value < significancePValue) continue;
         
         // Use fuzzy matching to find similar messages
         const fuzzyQuery = {

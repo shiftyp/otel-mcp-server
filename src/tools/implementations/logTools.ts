@@ -207,7 +207,7 @@ export function registerLogTools(server: McpServer, esAdapter: ElasticsearchAdap
       endTime: z.string().describe('End time (ISO 8601) - The end of the time window to analyze.'),
       service: z.string().optional().describe('Service name (optional) - The service whose logs to analyze. If not provided, logs from all services will be included unless services array is specified.'),
       services: z.array(z.string()).optional().describe('Services array (optional) - Multiple services whose logs to analyze. Takes precedence over service parameter if both are provided.'),
-      methods: z.array(z.enum(['frequency', 'pattern', 'statistical', 'clustering', 'cardinality', 'ngramSimilarity'])).optional().describe('Detection methods to use (optional) - Array of methods to apply. Default is all methods. For pattern detection, provide patternKeywords and includeDefaultPatterns. For clustering detection, provide maxResults. For statistical detection, provide zScoreThreshold and percentileThreshold. For frequency detection, provide spikeThreshold. For cardinality detection, provide cardinalityThreshold. For ngramSimilarity detection, provide fuzzy matching for similar log messages.'),
+      methods: z.array(z.enum(['frequency', 'pattern', 'statistical', 'clustering', 'cardinality', 'ngramSimilarity'])).optional().describe('Detection methods to use (optional) - Array of methods to apply. Default is all methods.'),
       lookbackWindow: z.string().optional().describe('Lookback window (optional) - Time window for baseline, e.g., "7d" for 7 days. Default is "7d".'),
       interval: z.string().optional().describe('Interval (optional) - Time bucket size for analysis, e.g., "1h" for hourly. Default is "1h".'),
       spikeThreshold: z.number().optional().describe('Spike threshold (optional) - Multiplier above baseline to consider anomalous. Default is 3.'),
@@ -216,6 +216,7 @@ export function registerLogTools(server: McpServer, esAdapter: ElasticsearchAdap
       zScoreThreshold: z.number().optional().describe('Z-score threshold (optional) - Standard deviations from mean to flag as anomaly. Default is 3.'),
       percentileThreshold: z.number().optional().describe('Percentile threshold (optional) - Percentile above which to flag as anomaly. Default is 95.'),
       cardinalityThreshold: z.number().optional().describe('Cardinality threshold (optional) - Multiplier above normal cardinality to flag as anomaly. Default is 2.'),
+      significancePValue: z.number().optional().describe('Significance p-value (optional) - Statistical significance level for rare event detection. Default is 0.05.'),
       maxResults: z.number().optional().describe('Max results (optional) - Maximum number of anomalies to return. Default is 100.')
     },
     async (args, _extra) => {
@@ -243,6 +244,7 @@ export function registerLogTools(server: McpServer, esAdapter: ElasticsearchAdap
         if (args.zScoreThreshold) options.zScoreThreshold = args.zScoreThreshold;
         if (args.percentileThreshold) options.percentileThreshold = args.percentileThreshold;
         if (args.cardinalityThreshold) options.cardinalityThreshold = args.cardinalityThreshold;
+        if (args.significancePValue) options.significancePValue = args.significancePValue;
         if (args.maxResults) options.maxResults = args.maxResults;
         
         // Detect log anomalies

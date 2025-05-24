@@ -57,9 +57,12 @@ export class EnumAnomalyDetector {
       valueFrequencies[Number(val)] = count / values.length;
     });
     
-    // Find rare values (values that occur less than 5% of the time)
+    // Get significance threshold from options or use default
+    const significancePValue = options.significancePValue || 0.05;
+    
+    // Find rare values based on the significance threshold
     const rareValues = Object.entries(valueFrequencies)
-      .filter(([_, freq]) => freq < 0.05)
+      .filter(([_, freq]) => freq < significancePValue)
       .map(([val, _]) => Number(val));
     
     const anomalies: MetricAnomaly[] = [];
@@ -74,7 +77,7 @@ export class EnumAnomalyDetector {
           deviation: 0,
           detectionMethod: 'rare-value',
           metricField,
-          threshold: 0.05,
+          threshold: significancePValue,
           type: 'rare-value',
           field: metricField,
           message: `Rare value ${values[i]} detected (frequency: ${(valueFrequencies[values[i]] * 100).toFixed(2)}%)`
@@ -88,8 +91,11 @@ export class EnumAnomalyDetector {
       transitionFrequencies[transition] = count / (values.length - 1);
     });
     
+    // Get rare transition threshold from options or use default
+    const rareTransitionPValue = options.rareTransitionPValue || 0.03;
+    
     const rareTransitions = Object.entries(transitionFrequencies)
-      .filter(([_, freq]) => freq < 0.03) // Transitions that occur less than 3% of the time
+      .filter(([_, freq]) => freq < rareTransitionPValue) // Use configurable threshold
       .map(([transition, _]) => transition);
     
     for (let i = 1; i < values.length; i++) {
@@ -102,7 +108,7 @@ export class EnumAnomalyDetector {
           deviation: 0,
           detectionMethod: 'rare-transition',
           metricField,
-          threshold: 0.03,
+          threshold: rareTransitionPValue,
           type: 'rare-transition',
           field: metricField,
           message: `Rare transition from ${values[i-1]} to ${values[i]} detected (frequency: ${(transitionFrequencies[transition] * 100).toFixed(2)}%)`

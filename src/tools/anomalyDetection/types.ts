@@ -7,6 +7,8 @@ export interface MetricAnomalyOptions {
   percentileThreshold?: number;   // Percentile threshold (default: 95)
   iqrMultiplier?: number;         // IQR multiplier for outlier detection (default: 1.5)
   changeThreshold?: number;       // Rate of change threshold as percentage (default: 50)
+  significancePValue?: number;    // Statistical significance level (default: 0.05)
+  rareTransitionPValue?: number;  // Significance level for rare transitions (default: 0.03)
   interval?: string;              // Time interval for buckets (default: '1m')
   maxResults?: number;            // Maximum number of results to return (default: 100)
 }
@@ -19,6 +21,7 @@ export interface SpanAnomalyOptions {
   zScoreThreshold?: number;     // Z-score threshold (default: 3)
   percentileThreshold?: number; // Percentile threshold (default: 95)
   iqrMultiplier?: number;       // IQR multiplier for outlier detection (default: 1.5)
+  significancePValue?: number;  // Statistical significance level (default: 0.05)
   maxResults?: number;          // Maximum number of results to return (default: 100)
   groupByOperation?: boolean;   // Whether to analyze each operation separately (default: true)
 }
