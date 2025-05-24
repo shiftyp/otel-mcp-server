@@ -5,10 +5,11 @@ import type { McpServer } from '@modelcontextprotocol/sdk/server/mcp.js';
 import { ElasticsearchAdapter } from '../../adapters/elasticsearch/index.js';
 import { ErrorPieChartTool } from './errorPieChart.js';
 import { ServiceHealthChartTool } from './serviceHealthChart.js';
+import { MarkdownTableTool } from './markdownTable.js';
 import { registerMcpTool } from '../../utils/registerTool.js';
 
 // Define panel types
-type PanelType = 'error-pie' | 'service-health' | 'service-dependency' | 'span-gantt';
+type PanelType = 'error-pie' | 'service-health' | 'service-dependency' | 'span-gantt' | 'markdown-table' | 'metrics-time-series-table';
 
 // Define panel configuration
 interface DashboardPanel {
@@ -115,11 +116,13 @@ export class MarkdownDashboardTool {
   private esAdapter: ElasticsearchAdapter;
   private errorPieChartTool: ErrorPieChartTool;
   private serviceHealthChartTool: ServiceHealthChartTool;
+  private markdownTableTool: MarkdownTableTool;
 
   constructor(esAdapter: ElasticsearchAdapter) {
     this.esAdapter = esAdapter;
     this.errorPieChartTool = new ErrorPieChartTool(esAdapter);
     this.serviceHealthChartTool = new ServiceHealthChartTool(esAdapter);
+    this.markdownTableTool = new MarkdownTableTool(esAdapter);
   }
 
   /**
@@ -129,6 +132,7 @@ export class MarkdownDashboardTool {
     // Register individual visualization tools
     this.errorPieChartTool.register(server);
     this.serviceHealthChartTool.register(server);
+    this.markdownTableTool.register(server);
 
     // Register the dashboard tool
     registerMcpTool(
@@ -189,6 +193,34 @@ export class MarkdownDashboardTool {
                   spanId: z.string().describe('Span ID to visualize'),
                   query: z.string().optional().describe('Optional query to filter related spans (e.g. "Resource.service.name:payment")')
                 }).describe('Span gantt chart configuration')
+              }),
+              
+              // Markdown Table Panel
+              z.object({
+                id: z.string().describe('Panel ID'),
+                title: z.string().describe('Panel title'),
+                type: z.literal('markdown-table').describe('Panel type'),
+                config: z.object({
+                  headers: z.array(z.string()).describe('Column headers for the table'),
+                  queryType: z.enum(['logs', 'traces', 'metrics']).describe('Type of OTEL data to query'),
+                  query: z.object({}).describe('Query to fetch data dynamically'),
+                  fieldMappings: z.array(z.string()).describe('Field paths to extract for each column'),
+                  maxRows: z.number().optional().describe('Maximum number of rows to display (default: 100)'),
+                  alignment: z.array(z.enum(['left', 'center', 'right'])).optional().describe('Column alignments')
+                }).describe('Markdown table configuration')
+              }),
+              
+              // Metrics Time Series Table Panel
+              z.object({
+                id: z.string().describe('Panel ID'),
+                title: z.string().describe('Panel title'),
+                type: z.literal('metrics-time-series-table').describe('Panel type'),
+                config: z.object({
+                  metricField: z.string().describe('Metric field to visualize (e.g., "metric.value")'),
+                  services: z.array(z.string()).describe('Array of services to include in the table'),
+                  intervalCount: z.number().optional().describe('Number of time intervals to display (default: 6)'),
+                  formatValue: z.enum(['raw', 'percent', 'integer', 'decimal1', 'decimal2']).optional().describe('Format for metric values (default: "decimal2")')
+                }).describe('Metrics time series table configuration')
               })
             ])
           ).describe('Dashboard panels')
@@ -288,6 +320,28 @@ export class MarkdownDashboardTool {
           return this.generateServiceDependencyGraph(panel.config, timeRange);
         case 'span-gantt':
           return this.generateSpanGanttChart(panel.config);
+        case 'markdown-table':
+          return this.markdownTableTool.generateMarkdownTable(
+            timeRange.start,
+            timeRange.end,
+            panel.config.headers,
+            panel.config.queryType,
+            panel.config.query,
+            panel.config.fieldMappings,
+            panel.config.maxRows,
+            panel.config.alignment,
+            panel.title
+          );
+        case 'metrics-time-series-table':
+          return this.markdownTableTool.generateMetricsTimeSeriesTable(
+            timeRange.start,
+            timeRange.end,
+            panel.config.metricField,
+            panel.config.services,
+            panel.config.intervalCount,
+            panel.config.formatValue,
+            panel.title
+          );
         default:
           return `Unsupported panel type: ${panel.type}`;
       }
@@ -677,4 +731,6 @@ export class MarkdownDashboardTool {
            span.service?.name || 
            'unknown';
   }
+
+
 }
