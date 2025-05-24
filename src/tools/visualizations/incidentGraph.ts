@@ -1,4 +1,6 @@
-import { ElasticsearchAdapter } from '../adapters/elasticsearch/index.js';
+import { logger } from '../../utils/logger.js';
+import type { MCPToolOutput } from '../../types.js';
+import { ElasticsearchAdapter } from '../../adapters/elasticsearch/index.js';
 
 /**
  * Tool for extracting an incident subgraph from OTEL traces and service dependencies.
@@ -19,9 +21,13 @@ export class IncidentGraphTool {
    * @param startTime ISO8601 start of incident window
    * @param endTime ISO8601 end of incident window
    * @param service (optional) focus on a single service
-   * @returns { nodes: [...], edges: [...], annotations: {...} }
+   * @returns MCPToolOutput with the incident graph visualization
    */
-  async extractIncidentGraph(startTime: string, endTime: string, service?: string) {
+  async extractIncidentGraph(
+    startTime: string, 
+    endTime: string, 
+    service?: string
+  ): Promise<MCPToolOutput> {
     // 1. Get all spans in the window (optionally filter by service)
     const must: any[] = [
       {
@@ -167,36 +173,39 @@ export class IncidentGraphTool {
         });
       }
     }
-    // Optionally, add service-level edges
-    // ...
-    return {
+
+    const result = {
       nodes,
       edges,
       affectedServices: Array.from(affectedServices),
-      mermaid: toIncidentMermaid(nodes, edges)
+      mermaid: this.toIncidentMermaid(nodes, edges)
+    };
+
+    // Create a markdown representation with the mermaid diagram
+    const markdown = '```mermaid\n' + result.mermaid + '\n```\n\n';
+    
+    return { 
+      content: [
+        { type: 'text', text: markdown }
+      ] 
     };
   }
-}
 
-/**
- * Convert incident graph nodes/edges to mermaid flowchart syntax.
- */
-/**
- * Convert incident graph nodes/edges to mermaid flowchart syntax.
- * Canonical edge fields: edge.from, edge.to; optionally edge.label.
- */
-export function toIncidentMermaid(nodes: any[], edges: any[]): string {
-  const mermaidLines = ["flowchart TD"];
-  for (const edge of edges) {
-    const fromNode = nodes.find(n => n.id === edge.from);
-    const toNode = nodes.find(n => n.id === edge.to);
-    const fromLabel = fromNode ? (fromNode.service ? `${fromNode.service}:${fromNode.name}` : fromNode.name) : edge.from;
-    const toLabel = toNode ? (toNode.service ? `${toNode.service}:${toNode.name}` : toNode.name) : edge.to;
-    let label = '';
-    if (edge.label) label = `|${edge.label}|`;
-    mermaidLines.push(`${fromLabel} -->${label} ${toLabel}`);
+  /**
+   * Convert incident graph nodes/edges to mermaid flowchart syntax.
+   * Canonical edge fields: edge.from, edge.to; optionally edge.label.
+   */
+  private toIncidentMermaid(nodes: any[], edges: any[]): string {
+    const mermaidLines = ["flowchart TD"];
+    for (const edge of edges) {
+      const fromNode = nodes.find(n => n.id === edge.from);
+      const toNode = nodes.find(n => n.id === edge.to);
+      const fromLabel = fromNode ? (fromNode.service ? `${fromNode.service}:${fromNode.name}` : fromNode.name) : edge.from;
+      const toLabel = toNode ? (toNode.service ? `${toNode.service}:${toNode.name}` : toNode.name) : edge.to;
+      let label = '';
+      if (edge.label) label = `|${edge.label}|`;
+      mermaidLines.push(`${fromLabel} -->${label} ${toLabel}`);
+    }
+    return mermaidLines.join('\n');
   }
-  return mermaidLines.join('\n');
 }
-
-

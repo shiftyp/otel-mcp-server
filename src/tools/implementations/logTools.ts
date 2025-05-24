@@ -3,7 +3,6 @@ import { logger } from '../../utils/logger.js';
 import type { MCPToolOutput } from '../../types.js';
 import type { McpServer } from '@modelcontextprotocol/sdk/server/mcp.js';
 import { ElasticsearchAdapter } from '../../adapters/elasticsearch/index.js';
-import { IncidentGraphTool } from '../incidentGraph.js';
 import { LogFieldsTool } from '../logFields.js';
 import { LogAnomalyDetectionTool } from '../logAnomalyDetection/index.js';
 import { registerMcpTool } from '../../utils/registerTool.js';
@@ -12,9 +11,10 @@ import { registerMcpTool } from '../../utils/registerTool.js';
  * Register log-related tools with the MCP server
  */
 export function registerLogTools(server: McpServer, esAdapter: ElasticsearchAdapter) {
-  const incidentGraphTool = new IncidentGraphTool(esAdapter);
   const logFieldsTool = new LogFieldsTool(esAdapter);
   const logAnomalyDetectionTool = new LogAnomalyDetectionTool(esAdapter);
+  
+  // Note: Incident graph visualization has been moved to the consolidated MarkdownVisualizationsTool
 
   // Logs search
   registerMcpTool(
@@ -104,83 +104,7 @@ export function registerLogTools(server: McpServer, esAdapter: ElasticsearchAdap
     }
   );
 
-  // Incident graph extraction
-  registerMcpTool(
-    server,
-    'extractIncidentGraph',
-    {
-      startTime: z.string().describe('Start time (ISO 8601) - The beginning of the incident window.'),
-      endTime: z.string().describe('End time (ISO 8601) - The end of the incident window.'),
-      service: z.string().optional().describe('Service name (optional) - Focus on a single service if provided.'),
-      services: z.array(z.string()).optional().describe('Services array (optional) - Focus on multiple services. Takes precedence over service parameter if both are provided.')
-    },
-    async (args: { startTime: string, endTime: string, service?: string, services?: string[] }, _extra: unknown) => {
-      // Determine which services to use
-      let serviceFilter: string | undefined = undefined;
-      if (args.services && args.services.length > 0) {
-        // If multiple services are specified, we'll need to run the extraction for each service
-        // and then combine the results
-        const multiServiceResults = await Promise.all(
-          args.services.map(service => 
-            incidentGraphTool.extractIncidentGraph(args.startTime, args.endTime, service)
-          )
-        );
-        
-        // Combine the results
-        const combinedResult = {
-          nodes: [] as any[],
-          edges: [] as any[],
-          annotations: { 
-            title: `Incident Graph for Multiple Services (${args.services.join(', ')})`,
-            description: `Time window: ${args.startTime} to ${args.endTime}`,
-            services: args.services
-          }
-        };
-        
-        // Track nodes we've already added to avoid duplicates
-        const nodeIds = new Set<string>();
-        const edgeKeys = new Set<string>(); // format: "from-to"
-        
-        // Combine nodes and edges from all service results
-        multiServiceResults.forEach(serviceResult => {
-          // Add unique nodes
-          (serviceResult.nodes || []).forEach((node: any) => {
-            if (!nodeIds.has(node.id)) {
-              nodeIds.add(node.id);
-              combinedResult.nodes.push(node);
-            }
-          });
-          
-          // Add unique edges
-          (serviceResult.edges || []).forEach((edge: any) => {
-            const edgeKey = `${edge.from}-${edge.to}`;
-            if (!edgeKeys.has(edgeKey)) {
-              edgeKeys.add(edgeKey);
-              combinedResult.edges.push(edge);
-            }
-          });
-        });
-        
-        return { 
-          content: [{ 
-            type: 'text', 
-            text: JSON.stringify(combinedResult, null, 2) 
-          }] 
-        };
-      } else if (args.service) {
-        serviceFilter = args.service;
-      }
-      
-      // If single service or no service specified, use the standard approach
-      const result = await incidentGraphTool.extractIncidentGraph(args.startTime, args.endTime, serviceFilter);
-      return { 
-        content: [{ 
-          type: 'text', 
-          text: JSON.stringify(result, null, 2) 
-        }] 
-      };
-    }
-  );
+  // Note: Incident graph extraction has been moved to the consolidated MarkdownVisualizationsTool
 
   // Logs query
   registerMcpTool(
