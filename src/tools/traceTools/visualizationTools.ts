@@ -27,7 +27,7 @@ export function registerTraceVisualizationTools(server: McpServer, esAdapter: El
       }
       
       // Build mermaid syntax for the service map
-      const mermaidLines = ["flowchart TD"];
+      const mermaidLines = ["graph TD"];
       
       // Create a map of service names to simple IDs
       const serviceIds = new Map<string, string>();
@@ -115,19 +115,19 @@ export function registerTraceVisualizationTools(server: McpServer, esAdapter: El
     }
   );
 
-  // Span flowchart
+  // Span Gantt chart
   server.tool(
-    'generateSpanFlowchart',
+    'generateSpanGanttChart',
     {
       spanId: z.string().describe('Span ID to visualize'),
       query: z.string().optional().describe('Optional query to filter related spans (e.g. "Resource.service.name:payment")')
     },
     async (args: { spanId: string, query?: string }, extra: unknown) => {
-      logger.info('[MCP TOOL] span-flowchart called', { args });
+      logger.info('[MCP TOOL] span-gantt-chart called', { args });
       try {
         // Validate the span ID format
         if (!args.spanId || args.spanId.trim() === '') {
-          logger.warn('[MCP TOOL] span-flowchart called with empty spanId');
+          logger.warn('[MCP TOOL] span-gantt-chart called with empty spanId');
           return { 
             content: [{ 
               type: 'text', 
@@ -136,13 +136,13 @@ export function registerTraceVisualizationTools(server: McpServer, esAdapter: El
           };
         }
         
-        const mermaidChart = await spanVisualizerTool.generateSpanFlowchart(args.spanId, args.query);
+        const mermaidChart = await spanVisualizerTool.generateGanntChart(args.spanId, args.query);
         
         // Check if the result is an error message
         if (mermaidChart.startsWith('No span found') || 
             mermaidChart.startsWith('Error generating') ||
             mermaidChart.startsWith('No spans found')) {
-          logger.warn('[MCP TOOL] span-flowchart returned error', { message: mermaidChart });
+          logger.warn('[MCP TOOL] span-gantt-chart returned error', { message: mermaidChart });
           return { 
             content: [{ 
               type: 'text', 
@@ -160,17 +160,17 @@ export function registerTraceVisualizationTools(server: McpServer, esAdapter: El
           ] 
         };
         
-        logger.info('[MCP TOOL] span-flowchart result generated successfully');
+        logger.info('[MCP TOOL] span-gantt-chart result generated successfully');
         return output;
       } catch (error) {
-        logger.error('[MCP TOOL] span-flowchart error', { 
+        logger.error('[MCP TOOL] span-gantt-chart error', { 
           error: error instanceof Error ? error.message : String(error),
           stack: error instanceof Error ? error.stack : undefined
         });
         return { 
           content: [{ 
             type: 'text', 
-            text: `Error generating span flowchart: ${error instanceof Error ? error.message : String(error)}` 
+            text: `Error generating span Gantt chart: ${error instanceof Error ? error.message : String(error)}` 
           }] 
         };
       }
