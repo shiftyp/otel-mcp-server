@@ -2,7 +2,7 @@
  * Options for log anomaly detection
  */
 export interface LogAnomalyOptions {
-  methods?: ('frequency' | 'pattern' | 'statistical' | 'clustering')[];
+  methods?: ('frequency' | 'pattern' | 'statistical' | 'clustering' | 'cardinality' | 'ngramSimilarity')[];
   lookbackWindow?: string;    // e.g., "7d" for 7-day baseline
   interval?: string;          // e.g., "1h" for hourly buckets
   spikeThreshold?: number;    // e.g., 3x normal frequency
@@ -11,6 +11,7 @@ export interface LogAnomalyOptions {
   zScoreThreshold?: number;   // For statistical detection
   percentileThreshold?: number;
   cardinalityThreshold?: number;
+  significancePValue?: number; // Statistical significance level (e.g., 0.05)
   maxResults?: number;
 }
 

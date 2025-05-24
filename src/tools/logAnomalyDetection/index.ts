@@ -4,6 +4,8 @@ import { FrequencyDetector } from './frequencyDetector.js';
 import { PatternDetector } from './patternDetector.js';
 import { StatisticalDetector } from './statisticalDetector.js';
 import { ClusteringDetector } from './clusteringDetector.js';
+import { CardinalityDetector } from './cardinalityDetector.js';
+import { NgramSimilarityDetector } from './ngramSimilarityDetector.js';
 import { LogAnomalyOptions } from './types.js';
 
 /**
@@ -15,12 +17,16 @@ export class LogAnomalyDetectionTool {
   private patternDetector: PatternDetector;
   private statisticalDetector: StatisticalDetector;
   private clusteringDetector: ClusteringDetector;
+  private cardinalityDetector: CardinalityDetector;
+  private ngramSimilarityDetector: NgramSimilarityDetector;
 
   constructor(private esAdapter: ElasticsearchAdapter) {
     this.frequencyDetector = new FrequencyDetector(esAdapter);
     this.patternDetector = new PatternDetector(esAdapter);
     this.statisticalDetector = new StatisticalDetector(esAdapter);
     this.clusteringDetector = new ClusteringDetector(esAdapter);
+    this.cardinalityDetector = new CardinalityDetector(esAdapter);
+    this.ngramSimilarityDetector = new NgramSimilarityDetector(esAdapter);
   }
 
   /**
@@ -30,6 +36,8 @@ export class LogAnomalyDetectionTool {
    * 2. Pattern-based detection (error patterns, severity changes)
    * 3. Statistical outlier detection (unusual field values)
    * 4. Clustering and cardinality analysis
+   * 5. Cardinality detection (unusual number of unique values)
+   * 6. N-gram similarity detection (similar but not identical messages)
    * 
    * @param startTime ISO8601 start time
    * @param endTime ISO8601 end time
@@ -51,7 +59,7 @@ export class LogAnomalyDetectionTool {
     });
 
     // Default methods if not specified
-    const methods = options.methods || ['frequency', 'pattern', 'statistical', 'clustering'];
+    const methods = options.methods || ['frequency', 'pattern', 'statistical', 'clustering', 'cardinality', 'ngramSimilarity'];
     const results: any = { anomalies: [] };
     
     try {
@@ -98,6 +106,26 @@ export class LogAnomalyDetectionTool {
         );
       }
       
+      if (methods.includes('cardinality')) {
+        detectionPromises.push(
+          this.cardinalityDetector.detectAnomalies(startTime, endTime, serviceOrServices, options)
+            .then(anomalies => {
+              results.cardinalityAnomalies = anomalies;
+              results.anomalies.push(...anomalies);
+            })
+        );
+      }
+      
+      if (methods.includes('ngramSimilarity')) {
+        detectionPromises.push(
+          this.ngramSimilarityDetector.detectAnomalies(startTime, endTime, serviceOrServices, options)
+            .then(anomalies => {
+              results.ngramSimilarityAnomalies = anomalies;
+              results.anomalies.push(...anomalies);
+            })
+        );
+      }
+      
       // Wait for all detection methods to complete
       await Promise.all(detectionPromises);
       
@@ -125,3 +153,5 @@ export * from './frequencyDetector.js';
 export * from './patternDetector.js';
 export * from './statisticalDetector.js';
 export * from './clusteringDetector.js';
+export * from './cardinalityDetector.js';
+export * from './ngramSimilarityDetector.js';
