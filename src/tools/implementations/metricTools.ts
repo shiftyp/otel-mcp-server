@@ -37,8 +37,12 @@ export function registerMetricTools(server: McpServer, esAdapter: ElasticsearchA
         const allFields = await otelMetricsTools.getAllMetricFields(args.search, serviceFilter);
         const schemas = await otelMetricsTools.getGroupedMetricSchemas(args.search);
         
-        // Format the output with schema information
-        const fields = allFields.map(fieldName => {
+        // Use a recent time range for metric type detection (last 24 hours)
+        const endTime = new Date().toISOString();
+        const startTime = new Date(Date.now() - 24 * 60 * 60 * 1000).toISOString();
+        
+        // Format the output with schema information and detected metric type
+        const fieldsPromises = allFields.map(async (fieldName) => {
           // Find the schema information for this field
           let type = 'unknown';
           let schema = null;
@@ -55,14 +59,52 @@ export function registerMetricTools(server: McpServer, esAdapter: ElasticsearchA
             if (schema) break;
           }
           
+          // Only attempt to detect metric type for numeric fields
+          let metricTypeInfo = {
+            metricType: 'unknown',
+            isGauge: false,
+            isCounter: false,
+            isMonotonicCounter: false,
+            isEnum: false,
+            isUnknown: true
+          };
+          
+          if (type === 'number' || type === 'float' || type === 'integer' || type === 'long' || type === 'double') {
+            try {
+              // Detect the metric type
+              const metricType = await otelMetricsTools.detectMetricType(
+                fieldName,
+                startTime,
+                endTime,
+                serviceFilter
+              );
+              
+              metricTypeInfo = {
+                metricType: metricType,
+                isGauge: metricType === 'gauge',
+                isCounter: metricType === 'counter',
+                isMonotonicCounter: metricType === 'monotonic_counter',
+                isEnum: metricType === 'enum',
+                isUnknown: metricType === 'unknown'
+              };
+            } catch (error) {
+              logger.warn(`[MCP TOOL] Error detecting metric type for ${fieldName}:`, error);
+            }
+          }
+          
           return {
             name: fieldName,
             type,
             schema,
+            metricType: metricTypeInfo.metricType,
+            typeInfo: metricTypeInfo,
             count: 0, // We don't have count information for metrics
             coOccurringFields: [] // We don't track co-occurring fields for metrics yet
           };
         });
+        
+        // Wait for all field processing to complete
+        const fields = await Promise.all(fieldsPromises);
         
         const result = {
           totalFields: fields.length,

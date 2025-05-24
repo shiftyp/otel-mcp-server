@@ -38,6 +38,9 @@ export interface MetricAnomaly {
   metricField: string;
   service?: string;
   threshold?: number;
+  type?: string;
+  field?: string;
+  message?: string;
 }
 
 /**

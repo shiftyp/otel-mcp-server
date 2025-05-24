@@ -117,7 +117,7 @@ export class PatternDetector {
       const anomalies: PatternAnomaly[] = [];
       
       for (const [pattern, bucket] of Object.entries(patternBuckets)) {
-        const timeBuckets = bucket.over_time?.buckets || [];
+        const timeBuckets = (bucket as any).over_time?.buckets || [];
         
         if (timeBuckets.length === 0) continue;
         

@@ -1,6 +1,11 @@
 import { ElasticsearchAdapter } from '../../adapters/elasticsearch/index.js';
 import { logger } from '../../utils/logger.js';
 import { MetricAnomalyOptions, MetricAnomaly } from './types.js';
+import { MetricType } from '../otelMetrics.js';
+import { GaugeAnomalyDetector } from './metricDetectors/gaugeDetector.js';
+import { CounterAnomalyDetector } from './metricDetectors/counterDetector.js';
+import { MonotonicCounterAnomalyDetector } from './metricDetectors/monotonicCounterDetector.js';
+import { EnumAnomalyDetector } from './metricDetectors/enumDetector.js';
 
 /**
  * Handles detection of anomalies in metrics data
@@ -38,37 +43,117 @@ export class MetricAnomalyDetector {
         this.findNumericFields(source, '', potentialMetricFields);
       });
       
-      logger.info(`[Metric Anomaly] Found ${potentialMetricFields.size} potential metric fields`);
+      logger.info(`[Metric Anomaly] Identified ${potentialMetricFields.size} potential metric fields`);
+      return potentialMetricFields;
     } catch (error) {
-      logger.error('[Metric Anomaly] Error in metric field detection', { error });
+      logger.error('[Metric Anomaly] Error finding potential metric fields', { error });
+      return potentialMetricFields;
     }
-    
-    return potentialMetricFields;
   }
-  
+
   /**
-   * Recursively find numeric fields in nested objects
+   * Recursively find numeric fields in an object
    */
-  private findNumericFields(obj: any, path: string, potentialMetricFields: Set<string>): void {
+  private findNumericFields(obj: any, prefix: string, fields: Set<string>): void {
     if (!obj || typeof obj !== 'object') return;
     
-    Object.entries(obj).forEach(([key, value]) => {
-      const fullPath = path ? `${path}.${key}` : key;
+    for (const key in obj) {
+      const value = obj[key];
+      const fieldName = prefix ? `${prefix}.${key}` : key;
       
-      // Skip timestamp and ID fields
-      if (fullPath.includes('timestamp') || fullPath.includes('id') || fullPath.includes('time')) {
-        return;
-      }
-      
-      // If it's a number, add it as a potential metric field
       if (typeof value === 'number') {
-        potentialMetricFields.add(fullPath);
+        fields.add(fieldName);
+      } else if (Array.isArray(value)) {
+        // Check if array contains numbers
+        if (value.length > 0 && typeof value[0] === 'number') {
+          fields.add(fieldName);
+        } else {
+          // Try to process array elements if they are objects
+          value.forEach((item, index) => {
+            if (item && typeof item === 'object') {
+              this.findNumericFields(item, `${fieldName}[${index}]`, fields);
+            }
+          });
+        }
+      } else if (value && typeof value === 'object') {
+        this.findNumericFields(value, fieldName, fields);
       }
-      // If it's an object, recursively search it
-      else if (value && typeof value === 'object' && !Array.isArray(value)) {
-        this.findNumericFields(value, fullPath, potentialMetricFields);
+    }
+  }
+
+  /**
+   * Detect the type of a metric based on its behavior in a time series
+   * @param metricField The metric field to analyze
+   * @param timeSeriesData Time series data for the metric
+   * @returns The detected metric type
+   */
+  private async detectMetricType(
+    metricField: string,
+    timeSeriesData: any[]
+  ): Promise<MetricType> {
+    try {
+      if (timeSeriesData.length < 5) {
+        logger.warn(`[Metric Anomaly] Not enough data points to determine metric type for: ${metricField}`);
+        return MetricType.UNKNOWN;
       }
-    });
+
+      // Extract values
+      const values = timeSeriesData
+        .map((bucket: any) => bucket.metric_value?.avg)
+        .filter((value: any) => value !== null && value !== undefined);
+
+      if (values.length < 5) {
+        return MetricType.UNKNOWN;
+      }
+
+      // Check if it's an enum (limited set of discrete values)
+      const uniqueValues = new Set(values);
+      if (uniqueValues.size <= 10 && uniqueValues.size / values.length < 0.2) {
+        return MetricType.ENUM;
+      }
+
+      // Check if it's a monotonic counter (always increasing or staying the same)
+      let isMonotonic = true;
+      for (let i = 1; i < values.length; i++) {
+        if (values[i] < values[i-1]) {
+          isMonotonic = false;
+          break;
+        }
+      }
+
+      if (isMonotonic) {
+        return MetricType.MONOTONIC_COUNTER;
+      }
+
+      // Check if it's a counter (generally increasing but can reset)
+      let increasingCount = 0;
+      let decreasingCount = 0;
+      let significantDrops = 0;
+
+      for (let i = 1; i < values.length; i++) {
+        const diff = values[i] - values[i-1];
+        if (diff > 0) {
+          increasingCount++;
+        } else if (diff < 0) {
+          decreasingCount++;
+          // Check for significant drops (potential counter resets)
+          if (values[i] < values[i-1] * 0.5) {
+            significantDrops++;
+          }
+        }
+      }
+
+      // If mostly increasing with some significant drops, likely a counter
+      if (increasingCount > decreasingCount * 2 && significantDrops > 0) {
+        return MetricType.COUNTER;
+      }
+
+      // Default to gauge (can go up and down freely)
+      return MetricType.GAUGE;
+    } catch (error) {
+      logger.error(`[Metric Anomaly] Error detecting metric type for ${metricField}:`, error);
+      return MetricType.UNKNOWN;
+    }
   }
 
   /**
@@ -191,9 +276,10 @@ export class MetricAnomalyDetector {
             return Array.from(potentialMetricFields);
           }
         } catch (error) {
-          logger.error('[Metric Anomaly] Error getting metric fields from schema', { error });
+          logger.error('[Metric Anomaly] Error identifying metric fields', { error });
           
-          // Fallback to the direct approach if schema access fails
+          // Try the fallback approach
+          logger.info('[Metric Anomaly] Falling back to direct field detection');
           const potentialMetricFields = await this.findPotentialMetricFields(must);
           
           // If no potential metric fields found, return empty result
@@ -205,10 +291,12 @@ export class MetricAnomalyDetector {
         }
       }
       
-      // Analyze the specific metric field for anomalies
-      const aggQuery = {
+      // 2. Query for the metric data with aggregations
+      const query = {
         size: 0,
-        query: { bool: { must } },
+        query: {
+          bool: { must }
+        },
         aggs: {
           time_buckets: {
             date_histogram: {
@@ -217,164 +305,106 @@ export class MetricAnomalyDetector {
             },
             aggs: {
               metric_value: {
-                avg: { field: metricField }
+                stats: {
+                  field: metricField
+                }
               }
             }
           },
-          overall_stats: {
-            stats: { field: metricField }
+          stats: {
+            stats: {
+              field: metricField
+            }
           },
           percentiles: {
             percentiles: {
               field: metricField,
-              percents: [25, 50, 75, 95, 99]
+              percents: [25, 50, 75, 90, 95, 99]
             }
           }
         }
       };
       
-      const aggResp = await this.esAdapter.queryMetrics(aggQuery);
+      const aggResp = await this.esAdapter.queryMetrics(query);
       const buckets = aggResp.aggregations?.time_buckets?.buckets || [];
-      const stats = aggResp.aggregations?.overall_stats || {};
+      const stats = aggResp.aggregations?.stats || {};
       const percentiles = aggResp.aggregations?.percentiles?.values || {};
       
       if (buckets.length === 0) {
         return { message: `No data found for metric field: ${metricField}` };
       }
       
-      // Calculate statistics for anomaly detection
-      const mean = stats.avg || 0;
-      const stdDev = stats.std_deviation || 0;
-      const q1 = percentiles['25.0'] || 0;
-      const q3 = percentiles['75.0'] || 0;
-      const iqr = q3 - q1;
-      const iqrLower = q1 - (iqrMultiplier * iqr);
-      const iqrUpper = q3 + (iqrMultiplier * iqr);
+      // Detect the metric type to use the appropriate specialized detection method
+      logger.info(`[Metric Anomaly] Detecting metric type for: ${metricField}`);
+      const metricType = await this.detectMetricType(metricField, buckets);
+      logger.info(`[Metric Anomaly] Detected metric type: ${metricType} for field: ${metricField}`);
       
-      // Calculate Z-score thresholds
-      const zScoreLower = mean - (zScoreThreshold * stdDev);
-      const zScoreUpper = mean + (zScoreThreshold * stdDev);
+      // Use the appropriate specialized detection method based on the metric type
+      let result: { anomalies: MetricAnomaly[]; stats: any };
       
-      // Get percentile threshold value
-      const percentileThresholdValue = percentiles[`${percentileThreshold}.0`] || 0;
-      
-      // Prepare for rate of change detection
-      let prevValue: number | null = null;
-      
-      // Detect anomalies in each bucket
-      const anomalies: MetricAnomaly[] = [];
-      
-      buckets.forEach((bucket: any, index: number) => {
-        const timestamp = bucket.key_as_string;
-        const value = bucket.metric_value?.value;
-        
-        if (value === null || value === undefined) {
-          return; // Skip buckets with no value
-        }
-        
-        // Store anomaly detection results
-        const anomalyInfo: any = {
-          timestamp,
-          value,
-          metricField,
-          service: typeof serviceOrServices === 'string' ? serviceOrServices : undefined
-        };
-        
-        // 1. Absolute threshold detection
-        if (options.absoluteThreshold !== undefined) {
-          if (value > options.absoluteThreshold) {
-            anomalies.push({
-              ...anomalyInfo,
-              threshold: options.absoluteThreshold,
-              detectionMethod: 'absolute_threshold'
-            });
-          }
-        }
-        
-        // 2. Z-score detection
-        const zScore = stdDev !== 0 ? (value - mean) / stdDev : 0;
-        if (Math.abs(zScore) > zScoreThreshold) {
-          anomalies.push({
-            ...anomalyInfo,
-            zScore,
-            expectedValue: mean,
-            deviation: value - mean,
-            threshold: zScoreThreshold,
-            detectionMethod: 'z_score'
-          });
-        }
-        
-        // 3. Percentile-based detection
-        if (value > percentileThresholdValue) {
-          anomalies.push({
-            ...anomalyInfo,
-            percentile: percentileThreshold,
-            threshold: percentileThresholdValue,
-            detectionMethod: 'percentile'
-          });
-        }
-        
-        // 4. IQR detection
-        if (value < iqrLower || value > iqrUpper) {
-          anomalies.push({
-            ...anomalyInfo,
-            expectedValue: mean,
-            deviation: value - mean,
-            threshold: value > iqrUpper ? iqrUpper : iqrLower,
-            detectionMethod: 'iqr'
-          });
-        }
-        
-        // 5. Rate of change detection
-        if (prevValue !== null) {
-          const change = prevValue !== 0 ? ((value - prevValue) / Math.abs(prevValue)) * 100 : 0;
+      switch (metricType) {
+        case MetricType.GAUGE:
+          logger.info(`[Metric Anomaly] Using gauge anomaly detection for: ${metricField}`);
+          result = await GaugeAnomalyDetector.detectAnomalies(metricField, buckets, options);
+          break;
           
-          if (Math.abs(change) > changeThreshold) {
-            anomalies.push({
-              ...anomalyInfo,
-              changeRate: change,
-              threshold: changeThreshold,
-              detectionMethod: 'rate_of_change'
-            });
-          }
-        }
-        
-        prevValue = value;
-      });
+        case MetricType.MONOTONIC_COUNTER:
+          logger.info(`[Metric Anomaly] Using monotonic counter anomaly detection for: ${metricField}`);
+          result = await MonotonicCounterAnomalyDetector.detectAnomalies(metricField, buckets, options);
+          break;
+          
+        case MetricType.COUNTER:
+          logger.info(`[Metric Anomaly] Using counter anomaly detection for: ${metricField}`);
+          result = await CounterAnomalyDetector.detectAnomalies(metricField, buckets, options);
+          break;
+          
+        case MetricType.ENUM:
+          logger.info(`[Metric Anomaly] Using enum anomaly detection for: ${metricField}`);
+          result = await EnumAnomalyDetector.detectAnomalies(metricField, buckets, options);
+          break;
+          
+        default:
+          // Fall back to gauge anomaly detection for unknown types
+          logger.info(`[Metric Anomaly] Using default gauge anomaly detection for: ${metricField} (unknown type)`);
+          result = await GaugeAnomalyDetector.detectAnomalies(metricField, buckets, options);
+          break;
+      }
       
-      // Limit the number of results
-      const limitedAnomalies = anomalies.slice(0, maxResults);
+      // Get the anomalies and stats from the specialized detection method
+      const anomalies = result.anomalies;
+      const detectionStats = result.stats;
+      
+      // Add metric type information to the statistics
+      const enhancedStats = {
+        ...stats,
+        ...detectionStats,
+        metricType,
+        percentiles,
+        q1: percentiles['25.0'] || 0,
+        q3: percentiles['75.0'] || 0,
+        iqr: (percentiles['75.0'] || 0) - (percentiles['25.0'] || 0),
+        iqrLower: (percentiles['25.0'] || 0) - (iqrMultiplier * ((percentiles['75.0'] || 0) - (percentiles['25.0'] || 0))),
+        iqrUpper: (percentiles['75.0'] || 0) + (iqrMultiplier * ((percentiles['75.0'] || 0) - (percentiles['25.0'] || 0))),
+        zScoreLower: (stats.avg || 0) - (zScoreThreshold * (stats.std_deviation || 0)),
+        zScoreUpper: (stats.avg || 0) + (zScoreThreshold * (stats.std_deviation || 0)),
+        percentileThresholdValue: percentiles[`${percentileThreshold}.0`] || 0
+      };
+      
+      // Sort anomalies by deviation (descending) and limit to maxResults
+      const sortedAnomalies = anomalies
+        .sort((a, b) => (b.deviation || 0) - (a.deviation || 0))
+        .slice(0, maxResults);
       
       return {
-        metricField,
+        anomalies: sortedAnomalies,
+        stats: enhancedStats,
+        metricType,
         service: typeof serviceOrServices === 'string' ? serviceOrServices : undefined,
-        totalAnomalies: anomalies.length,
-        anomalies: limitedAnomalies,
-        stats: {
-          mean,
-          stdDev,
-          min: stats.min,
-          max: stats.max,
-          count: stats.count,
-          q1,
-          median: percentiles['50.0'],
-          q3,
-          p95: percentiles['95.0'],
-          p99: percentiles['99.0']
-        },
-        thresholds: {
-          zScoreLower,
-          zScoreUpper,
-          iqrLower,
-          iqrUpper,
-          percentileThreshold: percentileThresholdValue,
-          absoluteThreshold: options.absoluteThreshold,
-          changeThreshold
-        }
+        metricField
       };
-    } catch (error) {
-      logger.error('[Metric Anomaly] Error detecting anomalies', { error });
-      return { error: 'Error detecting anomalies', details: String(error) };
+    } catch (error: any) {
+      logger.error('[Metric Anomaly] Error detecting anomalies', { error: error.message || String(error) });
+      return { error: error.message || String(error) };
     }
   }
 }

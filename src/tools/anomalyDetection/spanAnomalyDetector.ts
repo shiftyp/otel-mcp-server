@@ -78,19 +78,77 @@ export class SpanAnomalyDetector {
         }
       }
       
-      // Query for spans
+      // First, use schema information to identify the correct field names
+      let spanIdField = 'spanId';
+      let traceIdField = 'traceId';
+      let nameField = 'name';
+      let serviceFields = ['Resource.service.name', 'resource.attributes.service.name', 'service.name'];
+      let durationField = 'duration';
+      let timestampField = '@timestamp';
+      
+      try {
+        // Use the field schemas API to get field information
+        const indexPattern = 'traces*,*traces*,span*,*span*';
+        const fieldInfos = await import('../../adapters/fieldSchemas.js')
+          .then(module => module.getFieldStats(this.esAdapter, indexPattern));
+        
+        if (fieldInfos && fieldInfos.length > 0) {
+          logger.info(`[Span Anomaly] Found ${fieldInfos.length} fields from schema`);
+          
+          // Find the correct field names based on schema
+          for (const field of fieldInfos) {
+            const fieldLower = field.name.toLowerCase();
+            
+            // Identify span ID field
+            if (fieldLower.includes('spanid') || fieldLower.includes('span_id') || fieldLower.includes('span.id')) {
+              spanIdField = field.name;
+            }
+            
+            // Identify trace ID field
+            if (fieldLower.includes('traceid') || fieldLower.includes('trace_id') || fieldLower.includes('trace.id')) {
+              traceIdField = field.name;
+            }
+            
+            // Identify name field
+            if (fieldLower === 'name' || fieldLower.includes('operation') || fieldLower.includes('span.name')) {
+              nameField = field.name;
+            }
+            
+            // Identify service name fields
+            if (fieldLower.includes('service') && fieldLower.includes('name')) {
+              serviceFields.push(field.name);
+            }
+            
+            // Identify duration field
+            if (fieldLower.includes('duration') || fieldLower.includes('elapsed') || fieldLower.includes('time')) {
+              if (field.type === 'long' || field.type === 'integer' || 
+                  field.type === 'float' || field.type === 'double' || 
+                  field.type === 'number') {
+                durationField = field.name;
+              }
+            }
+            
+            // Identify timestamp field
+            if (fieldLower.includes('timestamp') || fieldLower.includes('time') && fieldLower.includes('start')) {
+              timestampField = field.name;
+            }
+          }
+        }
+      } catch (error) {
+        logger.warn('[Span Anomaly] Error getting field schema, using default field names', { error });
+      }
+      
+      // Query for spans with the identified field names
       const spanQuery = {
         size: 10000, // Get a large sample of spans
         query: { bool: { must } },
         _source: [
-          'spanId', 
-          'traceId', 
-          'name', 
-          'Resource.service.name', 
-          'resource.attributes.service.name',
-          'service.name',
-          'duration',
-          '@timestamp'
+          spanIdField,
+          traceIdField,
+          nameField,
+          ...new Set(serviceFields),
+          durationField,
+          timestampField
         ]
       };
       
@@ -103,18 +161,45 @@ export class SpanAnomalyDetector {
       
       logger.info(`[Span Anomaly] Found ${spans.length} spans for anomaly detection`);
       
-      // Normalize span data
+      // Normalize span data using the identified field names
       const normalizedSpans = spans.map((hit: any) => {
         const source = hit._source || {};
+        
+        // Extract service name by trying all possible service fields
+        let serviceName = 'unknown';
+        for (const serviceField of serviceFields) {
+          // Handle dot notation fields
+          if (serviceField.includes('.')) {
+            const parts = serviceField.split('.');
+            let value = source;
+            let valid = true;
+            
+            for (const part of parts) {
+              if (value && typeof value === 'object') {
+                value = value[part];
+              } else {
+                valid = false;
+                break;
+              }
+            }
+            
+            if (valid && value) {
+              serviceName = value;
+              break;
+            }
+          } else if (source[serviceField]) {
+            serviceName = source[serviceField];
+            break;
+          }
+        }
+        
         return {
-          spanId: source.spanId,
-          traceId: source.traceId,
-          name: source.name,
-          service: source.Resource?.service?.name || 
-                  source.resource?.attributes?.service?.name || 
-                  source['service.name'] || 'unknown',
-          duration: source.duration || 0,
-          timestamp: source['@timestamp']
+          spanId: source[spanIdField] || '',
+          traceId: source[traceIdField] || '',
+          name: source[nameField] || 'unknown',
+          service: serviceName,
+          duration: source[durationField] || 0,
+          timestamp: source[timestampField] || new Date().toISOString()
         };
       }).filter((span: any) => span.duration > 0); // Filter out spans with no duration
       

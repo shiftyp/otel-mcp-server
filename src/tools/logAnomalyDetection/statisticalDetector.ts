@@ -188,80 +188,73 @@ export class StatisticalDetector {
    */
   private async identifyNumericFields(must: any[]): Promise<string[]> {
     try {
-      // First try to get field mappings
-      const mappingsQuery = {
-        size: 0,
-        query: { bool: { must } },
-        aggs: {
-          sample: {
-            top_hits: {
-              size: 10,
-              _source: ['*']
-            }
-          }
-        }
-      };
+      // Use the field schemas API to get field information
+      const indexPattern = 'logs*,*logs*';
+      const fieldInfos = await import('../../adapters/fieldSchemas.js')
+        .then(module => module.getFieldStats(this.esAdapter, indexPattern));
       
-      const mappingsResp = await this.esAdapter.queryLogs(mappingsQuery);
-      const samples = mappingsResp.aggregations?.sample?.hits?.hits || [];
-      
-      if (samples.length === 0) {
+      if (!fieldInfos || fieldInfos.length === 0) {
+        logger.warn('[StatisticalDetector] No field information found');
         return [];
       }
       
-      // Extract fields from samples
-      const fields = new Set<string>();
-      const numericFields = new Set<string>();
+      logger.info(`[StatisticalDetector] Found ${fieldInfos.length} fields from schema`);
       
-      // Process each sample to find fields
-      samples.forEach((hit: any) => {
-        const source = hit._source || {};
-        this.extractFields('', source, fields);
-      });
+      // Filter to find numeric fields
+      const numericFields: string[] = [];
       
-      // Check each field to see if it's numeric
-      for (const field of fields) {
+      for (const field of fieldInfos) {
+        // Skip fields with no data
+        if (field.count === 0) continue;
+        
         // Skip common non-numeric fields
-        if (field.includes('timestamp') || 
-            field.includes('message') || 
-            field.includes('level') || 
-            field.includes('service')) {
+        if (field.name.includes('timestamp') || 
+            field.name.includes('message') || 
+            field.name.includes('level') || 
+            field.name.includes('service')) {
+          continue;
+        }
+        
+        // Check if it's a numeric type based on schema
+        if (field.type === 'long' || field.type === 'integer' || 
+            field.type === 'float' || field.type === 'double' || 
+            field.type === 'number') {
+          numericFields.push(field.name);
           continue;
         }
         
         // Check if field is likely numeric based on common patterns
         if (this.commonNumericFields.some(pattern => 
-          field.toLowerCase().includes(pattern.toLowerCase()))) {
-          numericFields.add(field);
-          continue;
-        }
-        
-        // Verify by checking a sample
-        const sampleQuery = {
-          size: 1,
-          query: { 
-            bool: { 
-              must: [
-                ...must,
-                { exists: { field } }
-              ] 
-            } 
-          },
-          _source: [field]
-        };
-        
-        const sampleResp = await this.esAdapter.queryLogs(sampleQuery);
-        const sample = sampleResp.hits?.hits?.[0]?._source;
-        
-        if (sample) {
-          const value = this.getNestedValue(sample, field);
-          if (typeof value === 'number') {
-            numericFields.add(field);
+          field.name.toLowerCase().includes(pattern.toLowerCase()))) {
+          
+          // Verify by checking a sample
+          const sampleQuery = {
+            size: 1,
+            query: { 
+              bool: { 
+                must: [
+                  ...must,
+                  { exists: { field: field.name } }
+                ] 
+              } 
+            },
+            _source: [field.name]
+          };
+          
+          const sampleResp = await this.esAdapter.queryLogs(sampleQuery);
+          const sample = sampleResp.hits?.hits?.[0]?._source;
+          
+          if (sample) {
+            const value = this.getNestedValue(sample, field.name);
+            if (typeof value === 'number') {
+              numericFields.push(field.name);
+            }
           }
         }
       }
       
-      return Array.from(numericFields);
+      logger.info(`[StatisticalDetector] Identified ${numericFields.length} numeric fields`);
+      return numericFields;
     } catch (error) {
       logger.error('[StatisticalDetector] Error identifying numeric fields', { error });
       return [];
