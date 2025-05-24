@@ -31,7 +31,7 @@ const esAdapter = new ElasticsearchAdapter({
 });
 
 // Register all MCP tools with the server
-registerAllTools(server, esAdapter);
+// This will be called after Elasticsearch connection validation
 
 async function validateElasticsearchConnection() {
   try {
@@ -69,8 +69,19 @@ validateElasticsearchConnection().then(async valid => {
     logger.error('Failed to validate Elasticsearch connection. Check your configuration.');
     process.exit(1);
   }
-
+  
   logger.info('Successfully connected to Elasticsearch');
+  
+  // Register all MCP tools with the server after validating Elasticsearch connection
+  try {
+    await registerAllTools(server, esAdapter);
+    logger.info('Successfully registered available MCP tools');
+  } catch (error) {
+    logger.error('Error registering MCP tools', {
+      error: error instanceof Error ? error.message : String(error),
+      stack: error instanceof Error ? error.stack : undefined
+    });
+  }
   
   // Add transports
   // @ts-ignore - addTransport is available but not typed

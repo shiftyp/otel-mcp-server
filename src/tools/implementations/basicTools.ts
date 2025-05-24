@@ -23,29 +23,33 @@ export function registerBasicTools(server: McpServer) {
     'listtools',
     { search: z.string().optional() },
     async (args: { search?: string } = {}) => {
-      // Hardcode the list of registered tools instead of accessing private property
-      const tools = [
-        'echo',
-        'analyzeTrace',
-        'lookupSpan',
-        'generateServiceDependencyGraph',
-        'listTopErrors',
-        'listServices',
-        'generateSpanFlowchart',
-        'queryTraces',
-        'searchForTraceFields',
-        'listtools',
-        'searchLogs',
-        'searchForLogFields',
-        'queryLogs',
-        'extractIncidentGraph',
-        'generateMetricsRangeAggregation',
-        'detectMetricAnomalies',
-        'queryMetrics',
-        'searchMetricsFields'
-      ];
-      const output: MCPToolOutput = { content: [{ type: 'text', text: JSON.stringify(tools) }] };
-      logger.info('[MCP TOOL] listtools result', { args, output });
+      // Get the actual list of registered tools
+      // @ts-ignore - getTools is available but not typed
+      const registeredTools = server.getTools ? server.getTools() : [];
+      const toolNames = registeredTools.map((tool: any) => tool.name);
+      
+      // Filter by search term if provided
+      let filteredTools = toolNames;
+      if (args.search) {
+        const searchTerm = args.search.toLowerCase();
+        filteredTools = toolNames.filter((name: string) => 
+          name.toLowerCase().includes(searchTerm)
+        );
+      }
+      
+      const output: MCPToolOutput = { 
+        content: [{ 
+          type: 'text', 
+          text: JSON.stringify(filteredTools, null, 2) 
+        }] 
+      };
+      
+      logger.info('[MCP TOOL] listtools result', { 
+        searchTerm: args.search, 
+        totalTools: toolNames.length,
+        filteredTools: filteredTools.length
+      });
+      
       return output;
     }
   );
