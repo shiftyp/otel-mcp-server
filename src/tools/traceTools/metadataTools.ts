@@ -5,6 +5,7 @@ import type { McpServer } from '@modelcontextprotocol/sdk/server/mcp.js';
 import { ElasticsearchAdapter } from '../../adapters/elasticsearch/index.js';
 import { TraceFieldsTool } from '../traceFields.js';
 import { EnhancedError } from './types.js';
+import { registerMcpTool } from '../../utils/registerTool.js';
 
 /**
  * Register trace metadata tools with the MCP server
@@ -13,7 +14,8 @@ export function registerTraceMetadataTools(server: McpServer, esAdapter: Elastic
   const traceFieldsTool = new TraceFieldsTool(esAdapter);
 
   // Services
-  server.tool(
+  registerMcpTool(
+    server,
     'listServices',
     { search: z.string().optional() },
     async (args: { search?: string } = {}) => {
@@ -42,7 +44,8 @@ export function registerTraceMetadataTools(server: McpServer, esAdapter: Elastic
   );
 
   // Top errors
-  server.tool(
+  registerMcpTool(
+    server,
     'listTopErrors',
     {
       startTime: z.string().describe('Start time (ISO 8601) - The beginning of the time window.'),
@@ -51,7 +54,13 @@ export function registerTraceMetadataTools(server: McpServer, esAdapter: Elastic
       service: z.string().optional().describe('Service name (optional) - The service whose errors to analyze. If not provided, errors from all services will be included unless services array is specified.'),
       services: z.array(z.string()).optional().describe('Services array (optional) - Multiple services whose errors to analyze. Takes precedence over service parameter if both are provided.')
     },
-    async (args, extra) => {
+    async (args: {
+      startTime: string;
+      endTime: string;
+      N?: number;
+      service?: string;
+      services?: string[];
+    }, extra: unknown) => {
       try {
         // Determine which services to use
         let serviceFilter: string | string[] | undefined = undefined;
@@ -151,8 +160,9 @@ export function registerTraceMetadataTools(server: McpServer, esAdapter: Elastic
     }
   );
 
-  // Trace fields schema
-  server.tool(
+  // Trace fields
+  registerMcpTool(
+    server,
     'searchForTraceFields',
     { 
       search: z.string().optional().describe('Search term to filter trace fields.'),

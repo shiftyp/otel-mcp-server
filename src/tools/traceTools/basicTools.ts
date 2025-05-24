@@ -4,16 +4,18 @@ import type { MCPToolOutput } from '../../types.js';
 import type { McpServer } from '@modelcontextprotocol/sdk/server/mcp.js';
 import { ElasticsearchAdapter } from '../../adapters/elasticsearch/index.js';
 import { ElasticGuards } from '../../utils/elasticGuards.js';
+import { registerMcpTool } from '../../utils/registerTool.js';
 
 /**
  * Register basic trace tools with the MCP server
  */
 export function registerBasicTraceTools(server: McpServer, esAdapter: ElasticsearchAdapter) {
   // Analyze trace
-  server.tool(
+  registerMcpTool(
+    server,
     'analyzeTrace',
     { traceId: z.string().describe('The ID of the trace to analyze.') },
-    async (args: { traceId: string }, extra) => {
+    async (args: { traceId: string }, extra: unknown) => {
       try {
         const analysis = await esAdapter.analyzeTrace(args.traceId);
         let result;
@@ -34,10 +36,11 @@ export function registerBasicTraceTools(server: McpServer, esAdapter: Elasticsea
   );
 
   // Span lookup
-  server.tool(
+  registerMcpTool(
+    server,
     'lookupSpan',
     { SpanId: z.string().describe('The ID of the span to look up.') },
-    async (args: { SpanId: string }, extra) => {
+    async (args: { SpanId: string }, extra: unknown) => {
       try {
         const span = await esAdapter.spanLookup(args.SpanId);
         const output: MCPToolOutput = { content: [{ type: 'text', text: span ? JSON.stringify(span, null, 2) : 'Span not found.' }] };
@@ -51,7 +54,8 @@ export function registerBasicTraceTools(server: McpServer, esAdapter: Elasticsea
   );
 
   // Traces query
-  server.tool(
+  registerMcpTool(
+    server,
     'queryTraces',
     { query: z.object({
       query: z.record(z.unknown()).optional(),
@@ -63,7 +67,7 @@ export function registerBasicTraceTools(server: McpServer, esAdapter: Elasticsea
       search: z.string().optional(),
       agg: z.record(z.unknown()).optional()
     }).strict().describe('Query OTEL traces in Elasticsearch. Use the same query format as Elasticsearch. Run searchForTraceFields to get a list of available fields and their schemas.') },
-    async (args: { query: any }, extra) => {
+    async (args: { query: any }, extra: unknown) => {
       try {
         const resp = await esAdapter.queryTraces(args.query);
         const output: MCPToolOutput = { content: [{ type: 'text', text: JSON.stringify(resp) }] };

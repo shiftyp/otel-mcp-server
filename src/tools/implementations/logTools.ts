@@ -6,6 +6,7 @@ import { ElasticsearchAdapter } from '../../adapters/elasticsearch/index.js';
 import { IncidentGraphTool } from '../incidentGraph.js';
 import { LogFieldsTool } from '../logFields.js';
 import { LogAnomalyDetectionTool } from '../logAnomalyDetection/index.js';
+import { registerMcpTool } from '../../utils/registerTool.js';
 
 /**
  * Register log-related tools with the MCP server
@@ -16,14 +17,15 @@ export function registerLogTools(server: McpServer, esAdapter: ElasticsearchAdap
   const logAnomalyDetectionTool = new LogAnomalyDetectionTool(esAdapter);
 
   // Logs search
-  server.tool(
+  registerMcpTool(
+    server,
     'searchLogs',
     { 
       pattern: z.string().optional().describe('Search term to filter log fields.'),
       service: z.string().optional().describe('Service name (optional) - Filter logs to only those from this service.'),
       services: z.array(z.string()).optional().describe('Services array (optional) - Filter logs to only those from these services. Takes precedence over service parameter if both are provided.')
     },
-    async (args: { pattern?: string, service?: string, services?: string[] }) => {
+    async (args: { pattern?: string, service?: string, services?: string[] }, extra: unknown) => {
       // Determine which services to use
       let serviceFilter: string | string[] | undefined = undefined;
       if (args.services && args.services.length > 0) {
@@ -46,14 +48,15 @@ export function registerLogTools(server: McpServer, esAdapter: ElasticsearchAdap
   );
 
   // Log fields schema with co-occurring fields
-  server.tool(
+  registerMcpTool(
+    server,
     'searchForLogFields',
     { 
       search: z.string().optional().describe('Search term to filter log fields.'),
       service: z.string().optional().describe('Service name (optional) - Filter fields to only those present in data from this service.'),
       services: z.array(z.string()).optional().describe('Services array (optional) - Filter fields to only those present in data from these services. Takes precedence over service parameter if both are provided.')
     },
-    async (args: { search?: string, service?: string, services?: string[] }, _extra: unknown) => {
+    async (args: { search?: string, service?: string, services?: string[] }, extra: unknown) => {
       try {
         logger.info('[MCP TOOL] logFieldsSchema called', { args });
         
@@ -102,7 +105,8 @@ export function registerLogTools(server: McpServer, esAdapter: ElasticsearchAdap
   );
 
   // Incident graph extraction
-  server.tool(
+  registerMcpTool(
+    server,
     'extractIncidentGraph',
     {
       startTime: z.string().describe('Start time (ISO 8601) - The beginning of the incident window.'),
@@ -179,7 +183,8 @@ export function registerLogTools(server: McpServer, esAdapter: ElasticsearchAdap
   );
 
   // Logs query
-  server.tool(
+  registerMcpTool(
+    server,
     'queryLogs',
     { query: z.object({
       query: z.record(z.unknown()).optional(),
@@ -200,7 +205,8 @@ export function registerLogTools(server: McpServer, esAdapter: ElasticsearchAdap
   );
   
   // Log anomaly detection
-  server.tool(
+  registerMcpTool(
+    server,
     'detectLogAnomalies',
     {
       startTime: z.string().describe('Start time (ISO 8601) - The beginning of the time window to analyze.'),
@@ -219,7 +225,7 @@ export function registerLogTools(server: McpServer, esAdapter: ElasticsearchAdap
       significancePValue: z.number().optional().describe('Significance p-value (optional) - Statistical significance level for rare event detection. Default is 0.05.'),
       maxResults: z.number().optional().describe('Max results (optional) - Maximum number of anomalies to return. Default is 100.')
     },
-    async (args, _extra) => {
+    async (args: any, extra: unknown) => {
       try {
         logger.info('[MCP TOOL] detectLogAnomalies called', { args });
         

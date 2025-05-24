@@ -4,6 +4,7 @@ import type { MCPToolOutput } from '../../types.js';
 import type { McpServer } from '@modelcontextprotocol/sdk/server/mcp.js';
 import { ElasticsearchAdapter } from '../../adapters/elasticsearch/index.js';
 import { SpanVisualizerTool } from '../spanVisualizer.js';
+import { registerMcpTool } from '../../utils/registerTool.js';
 
 /**
  * Register trace visualization tools with the MCP server
@@ -12,13 +13,17 @@ export function registerTraceVisualizationTools(server: McpServer, esAdapter: El
   const spanVisualizerTool = new SpanVisualizerTool(esAdapter);
 
   // Service dependency graph
-  server.tool(
+  registerMcpTool(
+    server,
     'generateServiceDependencyGraph',
     {
       startTime: z.string().describe('Start time (ISO 8601)'),
       endTime: z.string().describe('End time (ISO 8601)')
     },
-    async (args, extra) => {
+    async (args: {
+      startTime: string;
+      endTime: string;
+    }, extra: unknown) => {
       const edges: Array<{ parent: string, child: string, count: number, errorCount?: number, errorRate?: number }> = await esAdapter.serviceDependencyGraph(args.startTime, args.endTime);
       logger.info('[MCP TOOL] service.dependency.graph result', { args, edgeCount: edges.length, edges });
       if (!edges.length) {
@@ -116,7 +121,8 @@ export function registerTraceVisualizationTools(server: McpServer, esAdapter: El
   );
 
   // Span Gantt chart
-  server.tool(
+  registerMcpTool(
+    server,
     'generateSpanGanttChart',
     {
       spanId: z.string().describe('Span ID to visualize'),

@@ -2,16 +2,19 @@ import { z } from 'zod';
 import { logger } from '../../utils/logger.js';
 import type { MCPToolOutput } from '../../types.js';
 import type { McpServer } from '@modelcontextprotocol/sdk/server/mcp.js';
+import { getAvailableTools, searchTools } from '../../utils/toolRegistry.js';
+import { registerMcpTool } from '../../utils/registerTool.js';
 
 /**
  * Register basic utility tools with the MCP server
  */
 export function registerBasicTools(server: McpServer) {
   // Echo tool
-  server.tool(
+  registerMcpTool(
+    server,
     'echo',
     { message: z.string() },
-    async (args, extra) => {
+    async (args: { message: string }, extra: unknown) => {
       const result: MCPToolOutput = { content: [{ type: 'text', text: args.message }] };
       logger.info('[MCP TOOL] echo result', { args, result });
       return result;
@@ -19,35 +22,33 @@ export function registerBasicTools(server: McpServer) {
   );
 
   // List tools
-  server.tool(
+  registerMcpTool(
+    server,
     'listtools',
     { search: z.string().optional() },
     async (args: { search?: string } = {}) => {
-      // Get the actual list of registered tools
-      // @ts-ignore - getTools is available but not typed
-      const registeredTools = server.getTools ? server.getTools() : [];
-      const toolNames = registeredTools.map((tool: any) => tool.name);
+      // Get the list of available tools from the registry
+      let toolList: string[];
       
-      // Filter by search term if provided
-      let filteredTools = toolNames;
       if (args.search) {
-        const searchTerm = args.search.toLowerCase();
-        filteredTools = toolNames.filter((name: string) => 
-          name.toLowerCase().includes(searchTerm)
-        );
+        // Search for tools matching the search term
+        toolList = searchTools(args.search);
+      } else {
+        // Get all available tools
+        toolList = getAvailableTools();
       }
       
       const output: MCPToolOutput = { 
         content: [{ 
           type: 'text', 
-          text: JSON.stringify(filteredTools, null, 2) 
+          text: JSON.stringify(toolList, null, 2) 
         }] 
       };
       
       logger.info('[MCP TOOL] listtools result', { 
         searchTerm: args.search, 
-        totalTools: toolNames.length,
-        filteredTools: filteredTools.length
+        totalTools: getAvailableTools().length,
+        filteredTools: toolList.length
       });
       
       return output;

@@ -5,6 +5,7 @@ import type { McpServer } from '@modelcontextprotocol/sdk/server/mcp.js';
 import { ElasticsearchAdapter } from '../../adapters/elasticsearch/index.js';
 import { AnomalyDetectionTool } from '../anomalyDetection/index.js';
 import { OtelMetricsTools } from '../otelMetrics.js';
+import { registerMcpTool } from '../../utils/registerTool.js';
 
 /**
  * Register metrics-related tools with the MCP server
@@ -14,7 +15,8 @@ export function registerMetricTools(server: McpServer, esAdapter: ElasticsearchA
   const otelMetricsTools = new OtelMetricsTools(esAdapter);
 
   // Search for metrics fields
-  server.tool(
+  registerMcpTool(
+    server,
     'searchMetricsFields',
     { 
       search: z.string().optional().describe('Search term to filter metric fields.'),
@@ -133,7 +135,8 @@ export function registerMetricTools(server: McpServer, esAdapter: ElasticsearchA
   );
 
   // OTEL metrics range
-  server.tool(
+  registerMcpTool(
+    server,
     'generateMetricsRangeAggregation',
     {
       startTime: z.string().describe('Start time (ISO 8601) - The beginning of the metric aggregation window.'),
@@ -159,7 +162,8 @@ export function registerMetricTools(server: McpServer, esAdapter: ElasticsearchA
   );
 
   // Metrics query
-  server.tool(
+  registerMcpTool(
+    server,
     'queryMetrics',
     { query: z.object({
       query: z.record(z.unknown()).optional(),
@@ -201,7 +205,8 @@ export function registerMetricTools(server: McpServer, esAdapter: ElasticsearchA
   );
 
   // Anomaly metric detection with flexible hybrid approach
-  server.tool(
+  registerMcpTool(
+    server,
     'detectMetricAnomalies',
     {
       startTime: z.string().describe('Start time (ISO 8601) - The beginning of the time window.'),
@@ -285,7 +290,8 @@ export function registerMetricTools(server: McpServer, esAdapter: ElasticsearchA
   );
 
   // Span duration anomaly detection with flexible hybrid approach
-  server.tool(
+  registerMcpTool(
+    server,
     'detectSpanDurationAnomalies',
     {
       startTime: z.string().describe('Start time (ISO 8601) - The beginning of the time window.'),
