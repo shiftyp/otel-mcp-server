@@ -139,10 +139,9 @@ export class ElasticsearchCore extends EventEmitter {
     try {
       const response = await this.request('GET', '/_cat/indices?format=json');
       
-      // Filter out system indices and sort by name
+      // Get all indices and sort by name
       const filteredIndices = response
         .map((index: any) => index.index)
-        .filter((indexName: string) => !indexName.startsWith('.'))
         .sort();
       
       return filteredIndices;
