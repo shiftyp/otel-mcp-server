@@ -26,7 +26,8 @@ export class IncidentGraphTool {
   async extractIncidentGraph(
     startTime: string, 
     endTime: string, 
-    service?: string
+    service?: string,
+    query?: string
   ): Promise<MCPToolOutput> {
     // 1. Get all spans in the window (optionally filter by service)
     const must: any[] = [
@@ -55,6 +56,15 @@ export class IncidentGraphTool {
       });
     }
     
+    // Add custom query if provided
+    if (query) {
+      must.push({
+        query_string: {
+          query: query
+        }
+      });
+    }
+    
     // Add filter for error spans
     const errorFilter = {
       bool: {
@@ -75,7 +85,7 @@ export class IncidentGraphTool {
     must.push(errorFilter);
     
     // Query for error spans
-    const query = {
+    const esQuery = {
       size: 10000,
       query: { bool: { must } },
       _source: [
@@ -90,8 +100,9 @@ export class IncidentGraphTool {
       ]
     };
     
-    const resp = await this.esAdapter.queryTraces(query);
-    const spans = resp.hits?.hits?.map((h: any) => h._source) || [];
+    // Execute the query
+    const response = await this.esAdapter.queryTraces(esQuery);
+    const spans = response.hits?.hits?.map((h: any) => h._source) || [];
 
     // 2. Identify affected nodes (spans/services with errors or anomalies)
     // All spans from the query are already error spans due to our filter

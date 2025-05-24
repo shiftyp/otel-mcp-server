@@ -17,7 +17,8 @@ export class ServiceDependencyGraphTool {
    */
   public async generateServiceDependencyGraph(
     startTime: string,
-    endTime: string
+    endTime: string,
+    query?: string
   ): Promise<MCPToolOutput> {
     const edges: Array<{ parent: string, child: string, count: number, errorCount?: number, errorRate?: number }> = 
       await this.esAdapter.serviceDependencyGraph(startTime, endTime);

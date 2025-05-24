@@ -28,7 +28,8 @@ export class ErrorPieChartTool {
         services: z.array(z.string()).optional().describe('Optional array of services to include'),
         title: z.string().optional().describe('Optional chart title'),
         showData: z.boolean().optional().describe('Whether to show data values in the chart'),
-        maxResults: z.number().optional().describe('Maximum number of results to show (default: 10)')
+        maxResults: z.number().optional().describe('Maximum number of results to show (default: 10)'),
+        query: z.string().optional().describe('Optional query to filter errors (e.g. "level:error AND message:timeout")')
       },
       async (args: {
         startTime: string;
@@ -37,6 +38,7 @@ export class ErrorPieChartTool {
         title?: string;
         showData?: boolean;
         maxResults?: number;
+        query?: string;
       }, extra: unknown) => {
         logger.info('[MCP TOOL] error-pie-chart called', { args });
         try {
@@ -46,7 +48,8 @@ export class ErrorPieChartTool {
             args.services,
             args.title,
             args.showData,
-            args.maxResults
+            args.maxResults,
+            args.query
           );
 
           // Create a markdown representation with the mermaid diagram
@@ -85,15 +88,74 @@ export class ErrorPieChartTool {
     services?: string[],
     title?: string,
     showData?: boolean,
-    maxResults: number = 10
+    maxResults: number = 10,
+    query?: string
   ): Promise<string> {
     // Get top errors from the logs adapter
-    const errors = await this.esAdapter.topErrors(
-      startTime,
-      endTime,
-      maxResults,
-      services
-    );
+    let errors;
+    
+    if (query) {
+      // If a custom query is provided, use it to filter the errors
+      const queryObj: any = {
+        bool: {
+          must: [
+            {
+              range: {
+                '@timestamp': {
+                  gte: startTime,
+                  lte: endTime
+                }
+              }
+            },
+            {
+              query_string: {
+                query: query
+              }
+            }
+          ]
+        }
+      };
+      
+      // Add service filter if provided
+      if (services && services.length > 0) {
+        queryObj.bool.must.push({
+          bool: {
+            should: services.map(service => ({
+              term: { 'Resource.service.name': service }
+            })),
+            minimum_should_match: 1
+          }
+        });
+      }
+      
+      // Use the logs query API with error aggregation
+      const result = await this.esAdapter.queryLogs({
+        size: 0,
+        query: queryObj,
+        aggs: {
+          error_types: {
+            terms: {
+              field: 'body.keyword',
+              size: maxResults
+            }
+          }
+        }
+      });
+      
+      // Transform the results to match the topErrors format
+      errors = (result.aggregations?.error_types?.buckets || []).map((bucket: any) => ({
+        error: bucket.key,
+        count: bucket.doc_count
+      }));
+    } else {
+      // Use the standard topErrors method if no custom query
+      errors = await this.esAdapter.topErrors(
+        startTime,
+        endTime,
+        maxResults,
+        services
+      );
+    }
 
     if (!errors || errors.length === 0) {
       return 'pie title No Errors Found\n    "No Errors" : 1';

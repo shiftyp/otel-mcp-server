@@ -53,7 +53,8 @@ export class MarkdownVisualizationsTool {
     services: string[],
     maxResults: number,
     showData: boolean,
-    title: string
+    title: string,
+    query?: string
   ): Promise<string> {
     const mermaidChart = await this.errorPieChartTool.generateErrorPieChart(
       startTime,
@@ -61,7 +62,8 @@ export class MarkdownVisualizationsTool {
       services,
       title,
       showData,
-      maxResults
+      maxResults,
+      query
     );
     
     // Return the mermaid chart wrapped in a code block
@@ -81,7 +83,8 @@ export class MarkdownVisualizationsTool {
     yAxisLabel?: string,
     yMin?: number,
     yMax?: number,
-    intervalCount?: number
+    intervalCount?: number,
+    query?: string
   ): Promise<string> {
     const mermaidChart = await this.serviceHealthChartTool.generateServiceHealthChart(
       startTime,
@@ -93,7 +96,8 @@ export class MarkdownVisualizationsTool {
       yAxisLabel,
       yMin,
       yMax,
-      intervalCount
+      intervalCount,
+      query
     );
     
     // Return the mermaid chart wrapped in a code block
@@ -109,8 +113,6 @@ export class MarkdownVisualizationsTool {
       'generateMarkdownVisualizations',
       {
         config: z.object({
-          type: z.enum(['error-pie', 'service-health', 'service-dependency', 'span-gantt', 'incident-graph', 'markdown-table', 'metrics-time-series-table'])
-            .describe('Visualization type'),
           timeRange: z.object({
             start: z.string().describe('Start time (ISO 8601)'),
             end: z.string().describe('End time (ISO 8601)')
@@ -118,61 +120,66 @@ export class MarkdownVisualizationsTool {
           config: z.discriminatedUnion('type', [
             // Error Pie Chart Configuration
             z.object({
-              type: z.literal('error-pie'),
+              type: z.literal('error-pie').describe('Error distribution pie chart - Shows the distribution of errors by service or type'),
               services: z.array(z.string()).optional().describe('Optional array of services to include'),
               showData: z.boolean().optional().describe('Whether to show data values in the chart'),
-              maxResults: z.number().optional().describe('Maximum number of results to show (default: 10)')
+              maxResults: z.number().optional().describe('Maximum number of results to show (default: 10)'),
+              query: z.string().optional().describe('Optional query to filter errors (e.g. "level:error AND message:timeout")')
             }),
             
             // Service Health Chart Configuration
             z.object({
-              type: z.literal('service-health'),
+              type: z.literal('service-health').describe('Service health chart - Time series visualization of service health metrics'),
               services: z.array(z.string()).describe('Array of services to include'),
               metricField: z.string().optional().describe('Metric field to visualize (default: metric.value)'),
               aggregation: z.enum(['avg', 'min', 'max', 'sum']).optional().describe('Aggregation method for multiple services (default: avg)'),
               yAxisLabel: z.string().optional().describe('Y-axis label'),
               yMin: z.number().optional().describe('Minimum value for y-axis'),
               yMax: z.number().optional().describe('Maximum value for y-axis'),
-              intervalCount: z.number().optional().describe('Number of time intervals to display (default: 6)')
+              intervalCount: z.number().optional().describe('Number of time intervals to display (default: 6)'),
+              query: z.string().optional().describe('Optional query to filter metrics (e.g. "name:http_requests_total")')
             }),
             
             // Service Dependency Graph Configuration
             z.object({
-              type: z.literal('service-dependency')
-              // No additional configuration needed for service dependency graphs
+              type: z.literal('service-dependency').describe('Service dependency graph - Visualizes the relationships and call patterns between services'),
+              query: z.string().optional().describe('Optional query to filter service dependencies (e.g. "Resource.service.name:payment")')
             }),
             
             // Incident Graph Configuration
             z.object({
-              type: z.literal('incident-graph'),
-              service: z.string().optional().describe('Optional service name to focus on')
+              type: z.literal('incident-graph').describe('Incident graph - Visualizes the relationships between services during an incident'),
+              service: z.string().optional().describe('Optional service name to focus on'),
+              query: z.string().optional().describe('Optional query to filter incidents (e.g. "severity:high")')
             }),
             
             // Span Gantt Chart Configuration
             z.object({
-              type: z.literal('span-gantt'),
+              type: z.literal('span-gantt').describe('Span Gantt chart - Timeline visualization of spans in a distributed trace'),
               spanId: z.string().describe('Span ID to visualize'),
               query: z.string().optional().describe('Optional query to filter related spans (e.g. "Resource.service.name:payment")')
             }),
             
             // Markdown Table Configuration
             z.object({
-              type: z.literal('markdown-table'),
+              type: z.literal('markdown-table').describe('Markdown table - Tabular representation of OTEL data'),
               headers: z.array(z.string()).describe('Column headers for the table'),
               queryType: z.enum(['logs', 'traces', 'metrics']).describe('Type of OTEL data to query'),
               query: z.object({}).describe('Query to fetch data dynamically'),
               fieldMappings: z.array(z.string()).describe('Field paths to extract for each column'),
               maxRows: z.number().optional().describe('Maximum number of rows to display (default: 100)'),
-              alignment: z.array(z.enum(['left', 'center', 'right'])).optional().describe('Column alignments')
+              alignment: z.array(z.enum(['left', 'center', 'right'])).optional().describe('Column alignments'),
+              queryString: z.string().optional().describe('Optional query string to further filter the data')
             }),
             
             // Metrics Time Series Table Configuration
             z.object({
-              type: z.literal('metrics-time-series-table'),
+              type: z.literal('metrics-time-series-table').describe('Metrics time series table - Tabular representation of metrics over time intervals'),
               metricField: z.string().describe('Metric field to visualize (e.g., "metric.value")'),
               services: z.array(z.string()).describe('Array of services to include in the table'),
               intervalCount: z.number().optional().describe('Number of time intervals to display (default: 6)'),
-              formatValue: z.enum(['raw', 'percent', 'integer', 'decimal1', 'decimal2']).optional().describe('Format for metric values (default: "decimal2")')
+              formatValue: z.enum(['raw', 'percent', 'integer', 'decimal1', 'decimal2']).optional().describe('Format for metric values (default: "decimal2")'),
+              query: z.string().optional().describe('Optional query to filter metrics (e.g. "name:http_requests_total")')
             })
           ]).describe('Visualization-specific configuration')
         }).describe('Visualization configuration')
@@ -241,17 +248,18 @@ export class MarkdownVisualizationsTool {
           const showData = config.showData || false;
           const services = config.services || [];
           const title = config.title || 'Error Distribution';
+          const query = config.query;
           
           try {
             // Access the error pie chart tool through a wrapper method
-            // since the actual method might be private
             const result = await this.generateErrorPieChart(
               timeRange.start,
               timeRange.end,
               services,
               maxResults,
               showData,
-              title
+              title,
+              query
             );
             return result;
           } catch (error) {
@@ -268,6 +276,7 @@ Unable to generate the error distribution visualization: ${error instanceof Erro
           const metricField = config.metricField || 'metric.value';
           const title = config.title || 'Service Health';
           const yAxisLabel = config.yAxisLabel || 'Value';
+          const query = config.query;
           
           try {
             // Access the service health chart tool through a wrapper method
@@ -281,7 +290,8 @@ Unable to generate the error distribution visualization: ${error instanceof Erro
               yAxisLabel,
               config.yMin,
               config.yMax,
-              config.intervalCount
+              config.intervalCount,
+              query
             );
             return result;
           } catch (error) {
@@ -294,10 +304,13 @@ Unable to generate the service health visualization: ${error instanceof Error ? 
         
         case 'service-dependency': {
           // Use the ServiceDependencyGraphTool
+          const query = config.query;
+          
           try {
             const result = await this.serviceDependencyGraphTool.generateServiceDependencyGraph(
               timeRange.start,
-              timeRange.end
+              timeRange.end,
+              query
             );
             return extractContent(result);
           } catch (error) {
@@ -333,12 +346,14 @@ Unable to generate the span gantt visualization: ${error instanceof Error ? erro
           // Use the IncidentGraphTool
           // Get the service name from config (optional)
           const service = config.service || undefined;
+          const query = config.query;
           
           try {
             const result = await this.incidentGraphTool.extractIncidentGraph(
               timeRange.start,
               timeRange.end,
-              service
+              service,
+              query
             );
             return extractContent(result);
           } catch (error) {
@@ -387,6 +402,7 @@ Unable to generate the table visualization: ${error instanceof Error ? error.mes
           const intervalCount = config.intervalCount || 6;
           const formatValue = config.formatValue || 'decimal2';
           const title = config.title || 'Metrics Time Series';
+          const query = config.query;
           
           try {
             const result = await this.markdownTableTool.generateMetricsTimeSeriesTable(
@@ -396,7 +412,8 @@ Unable to generate the table visualization: ${error instanceof Error ? error.mes
               services,
               intervalCount,
               formatValue,
-              title
+              title,
+              query
             );
             return extractContent(result);
           } catch (error) {

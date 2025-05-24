@@ -32,7 +32,8 @@ export class ServiceHealthChartTool {
         yAxisLabel: z.string().optional().describe('Y-axis label'),
         yMin: z.number().optional().describe('Minimum value for y-axis'),
         yMax: z.number().optional().describe('Maximum value for y-axis'),
-        intervalCount: z.number().optional().describe('Number of time intervals to display (default: 6)')
+        intervalCount: z.number().optional().describe('Number of time intervals to display (default: 6)'),
+        query: z.string().optional().describe('Optional query to filter metrics (e.g. "name:http_requests_total")')
       },
       async (args: {
         startTime: string;
@@ -48,6 +49,7 @@ export class ServiceHealthChartTool {
         yMin?: number;
         yMax?: number;
         intervalCount?: number;
+        query?: string;
       }, extra: unknown) => {
         logger.info('[MCP TOOL] service-health-chart called', { args });
         try {
@@ -61,7 +63,8 @@ export class ServiceHealthChartTool {
             args.yAxisLabel,
             args.yMin,
             args.yMax,
-            args.intervalCount
+            args.intervalCount,
+            args.query
           );
 
           // Create a markdown representation with the mermaid diagram
@@ -104,7 +107,8 @@ export class ServiceHealthChartTool {
     yAxisLabel?: string,
     yMin?: number,
     yMax?: number,
-    intervalCount: number = 6
+    intervalCount: number = 6,
+    query?: string
   ): Promise<string> {
     // Generate time intervals for the x-axis
     const intervals = this.generateTimeIntervals(startTime, endTime, intervalCount);

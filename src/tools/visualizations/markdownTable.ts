@@ -32,7 +32,8 @@ export class MarkdownTableTool {
         fieldMappings: z.array(z.string()).describe('Field paths to extract for each column'),
         maxRows: z.number().optional().describe('Maximum number of rows to display (default: 100)'),
         alignment: z.array(z.enum(['left', 'center', 'right'])).optional().describe('Column alignments'),
-        title: z.string().optional().describe('Table title')
+        title: z.string().optional().describe('Table title'),
+        queryString: z.string().optional().describe('Optional query string to further filter the data')
       },
       async (args: {
         startTime: string;
@@ -44,6 +45,7 @@ export class MarkdownTableTool {
         maxRows?: number;
         alignment?: ('left' | 'center' | 'right')[];
         title?: string;
+        queryString?: string;
       }, extra: unknown) => {
         logger.info('[MCP TOOL] markdown-table called', { args });
         try {
@@ -56,7 +58,8 @@ export class MarkdownTableTool {
             args.fieldMappings,
             args.maxRows,
             args.alignment,
-            args.title
+            args.title,
+            args.queryString
           );
           
           const output: MCPToolOutput = { 
@@ -103,6 +106,7 @@ export class MarkdownTableTool {
         intervalCount?: number;
         formatValue?: 'raw' | 'percent' | 'integer' | 'decimal1' | 'decimal2';
         title?: string;
+        query?: string;
       }, extra: unknown) => {
         logger.info('[MCP TOOL] metrics-time-series-table called', { args });
         try {
@@ -150,7 +154,8 @@ export class MarkdownTableTool {
     fieldMappings: string[],
     maxRows: number = 100,
     alignment?: ('left' | 'center' | 'right')[],
-    title?: string
+    title?: string,
+    queryString?: string
   ): Promise<string> {
     try {
       if (!headers || headers.length === 0) {
@@ -165,15 +170,15 @@ export class MarkdownTableTool {
         return `Headers count (${headers.length}) does not match field mappings count (${fieldMappings.length}).`;
       }
 
-      // Add time range to the query
-      const queryWithTimeRange = {
+      // Prepare the query with time range
+      const esQuery = {
         ...query,
         query: {
-          ...(query.query || {}),
+          ...query.query,
           bool: {
             ...(query.query?.bool || {}),
-            filter: [
-              ...(query.query?.bool?.filter || []),
+            must: [
+              ...(query.query?.bool?.must || []),
               {
                 range: {
                   '@timestamp': {
@@ -186,18 +191,27 @@ export class MarkdownTableTool {
           }
         }
       };
+      
+      // Add custom query string if provided
+      if (queryString) {
+        esQuery.query.bool.must.push({
+          query_string: {
+            query: queryString
+          }
+        });
+      }
 
       // Execute the appropriate query based on queryType
       let queryResult: any;
       switch (queryType) {
         case 'logs':
-          queryResult = await this.esAdapter.queryLogs(queryWithTimeRange);
+          queryResult = await this.esAdapter.queryLogs(esQuery);
           break;
         case 'traces':
-          queryResult = await this.esAdapter.queryTraces(queryWithTimeRange);
+          queryResult = await this.esAdapter.queryTraces(esQuery);
           break;
         case 'metrics':
-          queryResult = await this.esAdapter.queryMetrics(queryWithTimeRange);
+          queryResult = await this.esAdapter.queryMetrics(esQuery);
           break;
         default:
           return `Unsupported query type: ${queryType}`;
@@ -358,7 +372,8 @@ export class MarkdownTableTool {
     services: string[],
     intervalCount: number = 6,
     valueFormat: 'raw' | 'percent' | 'integer' | 'decimal1' | 'decimal2' = 'decimal2',
-    title?: string
+    title?: string,
+    query?: string
   ): Promise<string> {
     try {
       if (!services || services.length === 0) {
@@ -395,12 +410,73 @@ export class MarkdownTableTool {
             });
             
             // Use the aggregateOtelMetricsRange method to get metrics for this service
-            const metricsResults = await this.esAdapter.aggregateOtelMetricsRange(
-              startTime,
-              endTime,
-              metricField,
-              service
-            );
+            let metricsResults;
+            
+            if (query) {
+              // If a custom query is provided, use it to filter the metrics
+              const queryObj: any = {
+                bool: {
+                  must: [
+                    {
+                      range: {
+                        '@timestamp': {
+                          gte: startTime,
+                          lte: endTime
+                        }
+                      }
+                    },
+                    {
+                      term: {
+                        'service.name': service
+                      }
+                    },
+                    {
+                      query_string: {
+                        query: query
+                      }
+                    }
+                  ]
+                }
+              };
+              
+              // Use the metrics query API with aggregation
+              const result = await this.esAdapter.queryMetrics({
+                size: 0,
+                query: queryObj,
+                aggs: {
+                  time_buckets: {
+                    date_histogram: {
+                      field: '@timestamp',
+                      fixed_interval: `${Math.ceil((new Date(endTime).getTime() - new Date(startTime).getTime()) / (intervalCount * 1000))}s`
+                    },
+                    aggs: {
+                      metric_value: {
+                        avg: {
+                          field: metricField
+                        }
+                      }
+                    }
+                  }
+                }
+              });
+              
+              // Transform the results to match the expected format
+              const buckets = result.aggregations?.time_buckets?.buckets || [];
+              const timeseries = buckets.map((bucket: any) => ({
+                timestamp: new Date(bucket.key).toISOString(),
+                value: bucket.metric_value?.value || 0
+              }));
+              
+              metricsResults = [JSON.stringify({ timeseries })];
+            } else {
+              // Use the standard aggregateOtelMetricsRange method if no custom query
+              metricsResults = await this.esAdapter.aggregateOtelMetricsRange(
+                startTime,
+                endTime,
+                metricField,
+                service
+              );
+            }
             
             // Log the raw results for debugging
             logger.info('[MarkdownTable] Raw metrics results', {
