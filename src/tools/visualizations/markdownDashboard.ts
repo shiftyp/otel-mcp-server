@@ -15,8 +15,6 @@ interface DashboardPanel {
   id: string;
   title: string;
   type: PanelType;
-  width: 'full' | 'half' | 'third';
-  height: 'small' | 'medium' | 'large';
   config?: any;
 }
 
@@ -29,7 +27,6 @@ interface DashboardConfig {
     end: string;
   };
   panels: DashboardPanel[];
-  refreshInterval?: number;
 }
 
 /**
@@ -152,8 +149,6 @@ export class MarkdownDashboardTool {
                 id: z.string().describe('Panel ID'),
                 title: z.string().describe('Panel title'),
                 type: z.literal('error-pie').describe('Panel type'),
-                width: z.enum(['full', 'half', 'third']).describe('Panel width'),
-                height: z.enum(['small', 'medium', 'large']).describe('Panel height'),
                 config: z.object({
                   services: z.array(z.string()).optional().describe('Optional array of services to include'),
                   showData: z.boolean().optional().describe('Whether to show data values in the chart'),
@@ -166,8 +161,6 @@ export class MarkdownDashboardTool {
                 id: z.string().describe('Panel ID'),
                 title: z.string().describe('Panel title'),
                 type: z.literal('service-health').describe('Panel type'),
-                width: z.enum(['full', 'half', 'third']).describe('Panel width'),
-                height: z.enum(['small', 'medium', 'large']).describe('Panel height'),
                 config: z.object({
                   services: z.array(z.string()).describe('Array of services to include'),
                   metricField: z.string().optional().describe('Metric field to visualize (default: metric.value)'),
@@ -184,8 +177,6 @@ export class MarkdownDashboardTool {
                 id: z.string().describe('Panel ID'),
                 title: z.string().describe('Panel title'),
                 type: z.literal('service-dependency').describe('Panel type'),
-                width: z.enum(['full', 'half', 'third']).describe('Panel width'),
-                height: z.enum(['small', 'medium', 'large']).describe('Panel height'),
                 config: z.object({}).describe('Service dependency graph configuration')
               }),
               
@@ -194,16 +185,13 @@ export class MarkdownDashboardTool {
                 id: z.string().describe('Panel ID'),
                 title: z.string().describe('Panel title'),
                 type: z.literal('span-gantt').describe('Panel type'),
-                width: z.enum(['full', 'half', 'third']).describe('Panel width'),
-                height: z.enum(['small', 'medium', 'large']).describe('Panel height'),
                 config: z.object({
                   spanId: z.string().describe('Span ID to visualize'),
                   query: z.string().optional().describe('Optional query to filter related spans (e.g. "Resource.service.name:payment")')
                 }).describe('Span gantt chart configuration')
               })
             ])
-          ).describe('Dashboard panels'),
-          refreshInterval: z.number().optional().describe('Auto-refresh interval in seconds')
+          ).describe('Dashboard panels')
         }).describe('Dashboard configuration')
       },
       async (args: {
@@ -266,32 +254,19 @@ export class MarkdownDashboardTool {
     
     markdown += `*Time Range: ${new Date(config.timeRange.start).toLocaleString()} to ${new Date(config.timeRange.end).toLocaleString()}*\n\n`;
     
-    // Create a grid layout using HTML in markdown
-    markdown += '<div style="display: grid; grid-template-columns: repeat(12, 1fr); gap: 16px;">\n\n';
-    
-    // Generate each panel
+    // Generate each panel in a simple top-down layout
     for (const panel of config.panels) {
-      // Determine column span based on width
-      const colSpan = panel.width === 'full' ? 12 : (panel.width === 'half' ? 6 : 4);
-      
-      // Determine height based on setting
-      const height = panel.height === 'small' ? '200px' : (panel.height === 'large' ? '500px' : '350px');
-      
-      markdown += `<div style="grid-column: span ${colSpan}; min-height: ${height};">\n\n`;
-      markdown += `### ${panel.title}\n\n`;
+      markdown += `## ${panel.title}\n\n`;
       
       // Generate the specific panel content based on type
       const panelContent = await this.generatePanelContent(panel, config.timeRange);
       markdown += panelContent;
       
-      markdown += '\n\n</div>\n\n';
+      markdown += '\n\n---\n\n';
     }
     
-    markdown += '</div>\n\n';
-    
-    if (config.refreshInterval) {
-      markdown += `<small>Auto-refreshes every ${config.refreshInterval} seconds</small>`;
-    }
+    // Remove the last separator
+    markdown = markdown.replace(/---\n\n$/, '');
     
     return markdown;
   }
