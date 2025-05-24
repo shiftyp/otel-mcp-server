@@ -12,6 +12,7 @@ import { MarkdownTableTool } from './markdownTable.js';
 import { ServiceDependencyGraphTool } from './serviceDependencyGraph.js';
 import { SpanGanttChartTool } from './spanGanttChart.js';
 import { IncidentGraphTool } from './incidentGraph.js';
+import { FieldDistributionPieChartTool } from './fieldDistributionPieChart.js';
 
 // Define interfaces for tool responses
 interface SimpleToolResponse {
@@ -33,6 +34,7 @@ export class MarkdownVisualizationsTool {
   private serviceDependencyGraphTool: ServiceDependencyGraphTool;
   private spanGanttChartTool: SpanGanttChartTool;
   private incidentGraphTool: IncidentGraphTool;
+  private fieldDistributionPieChartTool: FieldDistributionPieChartTool;
 
   constructor(esAdapter: ElasticsearchAdapter) {
     this.esAdapter = esAdapter;
@@ -42,6 +44,7 @@ export class MarkdownVisualizationsTool {
     this.serviceDependencyGraphTool = new ServiceDependencyGraphTool(esAdapter);
     this.spanGanttChartTool = new SpanGanttChartTool(esAdapter);
     this.incidentGraphTool = new IncidentGraphTool(esAdapter);
+    this.fieldDistributionPieChartTool = new FieldDistributionPieChartTool(esAdapter);
   }
 
   /**
@@ -118,6 +121,16 @@ export class MarkdownVisualizationsTool {
             end: z.string().describe('End time (ISO 8601)')
           }).describe('Time range for the visualization'),
           config: z.discriminatedUnion('type', [
+            // Field Distribution Pie Chart Configuration
+            z.object({
+              type: z.literal('field-distribution-pie').describe('Field distribution pie chart - Shows the distribution of values for a specific field'),
+              field: z.string().describe('The field to analyze for distribution (e.g., "Resource.service.name", "http.status_code")'),
+              dataType: z.enum(['logs', 'traces', 'metrics']).describe('Type of OTEL data to analyze'),
+              showData: z.boolean().optional().describe('Whether to show data values in the chart'),
+              maxSlices: z.number().optional().describe('Maximum number of slices to show (default: 10)'),
+              query: z.string().optional().describe('Optional query to filter the data (e.g. "level:error")')
+            }),
+            
             // Error Pie Chart Configuration
             z.object({
               type: z.literal('error-pie').describe('Error distribution pie chart - Shows the distribution of errors by service or type'),
@@ -242,6 +255,33 @@ export class MarkdownVisualizationsTool {
       };
       
       switch (type) {
+        case 'field-distribution-pie': {
+          // Use the FieldDistributionPieChartTool
+          const field = config.field || 'Resource.service.name';
+          const dataType = config.dataType || 'logs';
+          const maxSlices = config.maxSlices || 10;
+          const showData = config.showData || false;
+          const title = config.title || `Distribution of ${field}`;
+          const query = config.query;
+          
+          try {
+            const result = await this.fieldDistributionPieChartTool.generateFieldDistributionPieChart(
+              timeRange.start,
+              timeRange.end,
+              field,
+              dataType,
+              query,
+              title,
+              showData,
+              maxSlices
+            );
+            return '```mermaid\n' + result + '\n```';
+          } catch (error) {
+            logger.error('[MarkdownVisualizationsTool] Error generating field distribution pie chart', { error });
+            return `### Error Generating Field Distribution Pie Chart\n\nUnable to generate the field distribution visualization: ${error instanceof Error ? error.message : String(error)}`;
+          }
+        }
+        
         case 'error-pie': {
           // Use the ErrorPieChartTool
           const maxResults = config.maxResults || 10;
