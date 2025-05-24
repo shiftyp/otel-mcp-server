@@ -13,6 +13,7 @@ import { ServiceDependencyGraphTool } from './serviceDependencyGraph.js';
 import { SpanGanttChartTool } from './spanGanttChart.js';
 import { IncidentGraphTool } from './incidentGraph.js';
 import { FieldDistributionPieChartTool } from './fieldDistributionPieChart.js';
+import { IncidentTimelineTool } from './incidentTimeline.js';
 
 // Define interfaces for tool responses
 interface SimpleToolResponse {
@@ -35,6 +36,7 @@ export class MarkdownVisualizationsTool {
   private spanGanttChartTool: SpanGanttChartTool;
   private incidentGraphTool: IncidentGraphTool;
   private fieldDistributionPieChartTool: FieldDistributionPieChartTool;
+  private incidentTimelineTool: IncidentTimelineTool;
 
   constructor(esAdapter: ElasticsearchAdapter) {
     this.esAdapter = esAdapter;
@@ -45,6 +47,7 @@ export class MarkdownVisualizationsTool {
     this.spanGanttChartTool = new SpanGanttChartTool(esAdapter);
     this.incidentGraphTool = new IncidentGraphTool(esAdapter);
     this.fieldDistributionPieChartTool = new FieldDistributionPieChartTool(esAdapter);
+    this.incidentTimelineTool = new IncidentTimelineTool(esAdapter);
   }
 
   /**
@@ -128,7 +131,7 @@ export class MarkdownVisualizationsTool {
               dataType: z.enum(['logs', 'traces', 'metrics']).describe('Type of OTEL data to analyze'),
               showData: z.boolean().optional().describe('Whether to show data values in the chart'),
               maxSlices: z.number().optional().describe('Maximum number of slices to show (default: 10)'),
-              query: z.string().optional().describe('Optional query to filter the data (e.g. "level:error")')
+              query: z.string().optional().describe('Optional query to filter the data (e.g. "service:frontend")')
             }),
             
             // Error Pie Chart Configuration
@@ -166,6 +169,14 @@ export class MarkdownVisualizationsTool {
               query: z.string().optional().describe('Optional query to filter incidents (e.g. "severity:high")')
             }),
             
+            // Incident Timeline Configuration
+            z.object({
+              type: z.literal('incident-timeline').describe('Incident timeline - Shows a chronological view of events during an incident'),
+              services: z.array(z.string()).optional().describe('Optional array of services to include'),
+              maxEvents: z.number().optional().describe('Maximum number of events to include in the timeline (default: 20)'),
+              query: z.string().optional().describe('Optional query to filter events (e.g. "message:*timeout*")')
+            }),
+            
             // Span Gantt Chart Configuration
             z.object({
               type: z.literal('span-gantt').describe('Span Gantt chart - Timeline visualization of spans in a distributed trace'),
@@ -200,7 +211,8 @@ export class MarkdownVisualizationsTool {
       async (args: { config: any }, extra: unknown) => {
         logger.info('[MCP TOOL] markdown-visualizations called', { args });
         try {
-          const { type, timeRange, config } = args.config;
+          const { timeRange, config } = args.config;
+          const type = config.type; // Extract type from the config object
           
           // Generate the visualization based on the type
           const visualization = await this.generateVisualization(type, config, timeRange);
@@ -401,6 +413,27 @@ Unable to generate the span gantt visualization: ${error instanceof Error ? erro
             return `### Error Generating Incident Graph
 
 Unable to generate the incident graph visualization: ${error instanceof Error ? error.message : String(error)}`;
+          }
+        }
+        
+        case 'incident-timeline': {
+          // Use the IncidentTimelineTool
+          const services = config.services || [];
+          const maxEvents = config.maxEvents || 20;
+          const query = config.query;
+          
+          try {
+            const result = await this.incidentTimelineTool.generateIncidentTimeline(
+              timeRange.start,
+              timeRange.end,
+              services,
+              maxEvents,
+              query
+            );
+            return '```mermaid\n' + result + '\n```';
+          } catch (error) {
+            logger.error('[MarkdownVisualizationsTool] Error generating incident timeline', { error });
+            return `### Error Generating Incident Timeline\n\nUnable to generate the incident timeline visualization: ${error instanceof Error ? error.message : String(error)}`;
           }
         }
         
