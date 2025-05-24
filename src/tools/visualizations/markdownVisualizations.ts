@@ -174,7 +174,12 @@ export class MarkdownVisualizationsTool {
               type: z.literal('incident-timeline').describe('Incident timeline - Shows a chronological view of events during an incident'),
               services: z.array(z.string()).optional().describe('Optional array of services to include'),
               maxEvents: z.number().optional().describe('Maximum number of events to include in the timeline (default: 20)'),
-              query: z.string().optional().describe('Optional query to filter events (e.g. "message:*timeout*")')
+              query: z.string().optional().describe('Optional query to filter events (e.g. "message:*timeout*")'),
+              includeTraces: z.boolean().optional().describe('Whether to include trace anomalies (default: true)'),
+              includeMetrics: z.boolean().optional().describe('Whether to include metric anomalies (default: true)'),
+              timeFormat: z.string().optional().describe('Optional format for displaying time (uses date-fns format strings)'),
+              correlateEvents: z.boolean().optional().describe('Whether to correlate related events across telemetry types (default: true)'),
+              useRelativeTime: z.boolean().optional().describe('Whether to show timestamps relative to the first event (default: false)')
             }),
             
             // Span Gantt Chart Configuration
@@ -421,6 +426,11 @@ Unable to generate the incident graph visualization: ${error instanceof Error ? 
           const services = config.services || [];
           const maxEvents = config.maxEvents || 20;
           const query = config.query;
+          const includeTraces = config.includeTraces !== undefined ? config.includeTraces : true;
+          const includeMetrics = config.includeMetrics !== undefined ? config.includeMetrics : true;
+          const timeFormat = config.timeFormat || 'HH:mm';
+          const correlateEvents = config.correlateEvents !== undefined ? config.correlateEvents : true;
+          const useRelativeTime = config.useRelativeTime !== undefined ? config.useRelativeTime : false;
           
           try {
             const result = await this.incidentTimelineTool.generateIncidentTimeline(
@@ -428,7 +438,12 @@ Unable to generate the incident graph visualization: ${error instanceof Error ? 
               timeRange.end,
               services,
               maxEvents,
-              query
+              query,
+              includeTraces,
+              includeMetrics,
+              timeFormat,
+              correlateEvents,
+              useRelativeTime
             );
             return '```mermaid\n' + result + '\n```';
           } catch (error) {
