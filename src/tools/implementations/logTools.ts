@@ -3,6 +3,7 @@ import { logger } from '../../utils/logger.js';
 import type { MCPToolOutput } from '../../types.js';
 import type { McpServer } from '@modelcontextprotocol/sdk/server/mcp.js';
 import { ElasticsearchAdapter } from '../../adapters/elasticsearch/index.js';
+import { LogsTableTool } from '../visualizations/logsTable.js';
 import { LogFieldsTool } from '../logFields.js';
 import { LogAnomalyDetectionTool } from '../logAnomalyDetection/index.js';
 import { registerMcpTool } from '../../utils/registerTool.js';

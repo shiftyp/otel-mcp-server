@@ -71,13 +71,13 @@ This server exposes MCP tools for use with MCP-compatible clients (such as Winds
 
 ### Traces
 
-- `analyzeTrace`: Get a summary of a trace by ID
-- `lookupSpan`: Find a span by ID
+- `traceAnalyze`: Get a summary of a trace by ID
+- `spanGet`: Find a span by ID
 - `generateServiceDependencyGraph`: Create a service dependency graph for a time window
 - `generateSpanFlowchart`: Generate a flowchart for a span
-- `queryTraces`: Query traces with Elasticsearch syntax
-- `searchForTraceFields`: Find available trace fields (supports service filtering)
-- `detectSpanDurationAnomalies`: Detect anomalies in span durations (supports optional operation and multiple services)
+- `tracesQuery`: Query traces with Elasticsearch syntax
+- `traceFieldsGet`: Find available trace fields (supports service filtering)
+- `spanDurationAnomaliesDetect`: Detect anomalies in span durations (supports optional operation and multiple services)
 
 ### Metrics
 
@@ -88,16 +88,27 @@ This server exposes MCP tools for use with MCP-compatible clients (such as Winds
 
 ### Logs
 
-- `searchLogs`: Search logs for a pattern (supports service filtering)
-- `searchForLogFields`: Find available log fields (supports service filtering)
-- `queryLogs`: Query logs with Elasticsearch syntax
-- `detectLogAnomalies`: Detect anomalies in logs using a hybrid approach (supports multiple detection methods)
-- `extractIncidentGraph`: Extract an incident graph for a time window (supports multiple services)
+- `findLogs`: Search logs for a pattern (supports service filtering and time ranges)
+- `logsTable`: Display logs in a tabular format with customizable fields and trace links
+- `logFieldsGet`: Find available log fields (supports service filtering)
+- `logsQuery`: Query logs with Elasticsearch syntax
+- `logAnomaliesDetect`: Detect anomalies in logs using a hybrid approach (supports multiple detection methods)
+- `errorsGetTop`: Get top errors for a service or across multiple services
+
+### Visualizations
+
+- `generateMarkdownVisualizations`: Generate various visualizations including:
+  - Incident timeline with emoji and special character support
+  - XY charts (bar, line, scatter) for metrics, logs, and traces
+  - Service dependency graphs
+  - Error distribution pie charts
+  - Service health charts
+  - Span Gantt charts
+  - Metrics time series tables
 
 ### Services
 
-- `listServices`: List all services
-- `listTopErrors`: Get top errors for a service or across multiple services
+- `servicesGet`: List all services
 
 ## 🔍 Enhanced Anomaly Detection
 
@@ -123,7 +134,7 @@ mcp0_detectMetricAnomalies({
 
 ### Span Duration Anomaly Detection
 
-The `detectSpanDurationAnomalies` tool supports:
+The `spanDurationAnomaliesDetect` tool supports:
 
 - Optional operation - Analyze any/all operations when no specific operation is provided
 - Multiple services - Compare anomalies across different services
@@ -131,7 +142,7 @@ The `detectSpanDurationAnomalies` tool supports:
 
 ```javascript
 // Find any slow spans across all operations in the payment service
-mcp0_detectSpanDurationAnomalies({
+mcp0_spanDurationAnomaliesDetect({
   "startTime": "2025-05-23T12:00:00-04:00",
   "endTime": "2025-05-23T14:00:00-04:00",
   "service": "payment",
@@ -141,7 +152,7 @@ mcp0_detectSpanDurationAnomalies({
 
 ### Log Anomaly Detection
 
-The `detectLogAnomalies` tool implements a hybrid approach combining multiple detection strategies without requiring machine learning models:
+The `logAnomaliesDetect` tool implements a hybrid approach combining multiple detection strategies without requiring machine learning models:
 
 - **Frequency-based detection** - Identifies unusual spikes or drops in log volume compared to a baseline period
 - **Pattern-based detection** - Searches for logs containing error patterns or unexpected severity changes
@@ -152,7 +163,7 @@ The tool supports multiple services and provides configurable parameters for fin
 
 ```javascript
 // Find anomalous logs across multiple services using all detection methods
-mcp0_detectLogAnomalies({
+mcp0_logAnomaliesDetect({
   "startTime": "2025-05-23T12:00:00-04:00",
   "endTime": "2025-05-23T14:00:00-04:00",
   "services": ["payment", "checkout", "inventory"],
@@ -162,7 +173,7 @@ mcp0_detectLogAnomalies({
 })
 
 // Focus on specific detection methods with custom parameters
-mcp0_detectLogAnomalies({
+mcp0_logAnomaliesDetect({
   "startTime": "2025-05-23T12:00:00-04:00",
   "endTime": "2025-05-23T14:00:00-04:00",
   "service": "payment",
@@ -192,13 +203,13 @@ mcp0_searchMetricsFields({
 })
 
 // Find duration-related span fields in the checkout service
-mcp0_searchForTraceFields({
+mcp0_traceFieldsGet({
   "search": "duration",
   "service": "checkout"
 })
 
 // Find error-related log fields across multiple services
-mcp0_searchForLogFields({
+mcp0_logFieldsGet({
   "search": "error",
   "services": ["payment", "checkout"]
 })
@@ -206,13 +217,334 @@ mcp0_searchForLogFields({
 
 ### Log Search
 
-Filter logs by service:
+Filter logs by service and time range:
 
 ```javascript
 // Find timeout logs across multiple services
-mcp0_searchLogs({
+mcp0_findLogs({
   "pattern": "timeout",
-  "services": ["payment", "inventory", "shipping"]
+  "services": ["payment", "inventory", "shipping"],
+  "timeRange": {
+    "start": "now-1h",
+    "end": "now"
+  }
+})
+```
+
+## 📊 Enhanced Visualizations
+
+The OTEL MCP Server includes powerful visualization capabilities through the `generateMarkdownVisualizations` tool. All visualizations properly handle special characters and emojis using Unicode escaping.
+
+### Incident Timeline
+
+Generate a chronological view of events during an incident:
+
+```javascript
+// Create an incident timeline for the last hour
+mcp0_generateMarkdownVisualizations({
+  "config": {
+    "timeRange": {
+      "start": "now-1h",
+      "end": "now"
+    },
+    "config": {
+      "type": "incident-timeline",
+      "maxEvents": 20,
+      "correlateEvents": true,
+      "services": ["payment", "checkout"],
+      "includeMetrics": true,
+      "includeTraces": true
+    }
+  }
+})
+```
+
+**Example Output:**
+
+```mermaid
+timeline
+title Incident Timeline (with correlation)
+    section load-generator
+        07#58;42 PM : Warning Transient error StatusCode.UNAVAILABLE encountered while exporting logs to otel-collector#58;4317... : warning
+        07#58;42 PM : Warning Transient error StatusCode.UNAVAILABLE encountered while exporting traces to otel-collector#58;43... : warning
+        07#58;42 PM : Error Browser.new_context#58; Target page, context or browser has been closed Traceback (most recent ca... : critical
+        07#58;42 PM : Error POST [8768d8ad...][4bee997e...] : critical
+        07#58;42 PM : Error GET [73465730...][be2732b2...] : critical
+    section product-catalog
+        07#58;43 PM : Error oteldemo.ProductCatalogService/GetProduct [0a2da977...][9cef039b...] : critical
+```
+
+### Logs Table
+
+Display logs in a tabular format with customizable fields and trace links:
+
+### Logs Table
+
+Generate a table of logs with customizable fields. You can use either the dedicated logs table tool or the markdown visualizations tool:
+
+```javascript
+
+```javascript
+// Method 1: Using the dedicated logs table tool
+mcp0_logsTable({
+  "timeRange": {
+    "start": "now-1h",
+    "end": "now"
+  },
+  "maxRows": 3,
+  "fields": ["Resource.service.name"]
+})
+
+// Method 2: Using the markdown visualizations tool
+mcp0_generateMarkdownVisualizations({
+  "config": {
+    "timeRange": {
+      "start": "now-1h",
+      "end": "now"
+    },
+    "config": {
+      "type": "logs-table",
+      "maxRows": 3,
+      "fields": ["timestamp", "service", "level", "message", "Resource.service.name"],
+      "includeTraceLinks": true,
+      "services": ["payment", "checkout", "inventory"] // Optional: filter to specific services
+    }
+  }
+})
+```
+
+**Example Output:**
+
+| Timestamp | Service | Level | Message | Trace ID | Resource.service.name |
+|-----------|---------|-------|---------|----------|----------------------|
+| 2025-05-25 22:52:52 | payment-service | ERROR | Failed to process payment for order #12345: Invalid credit card number | [f8a91c2d...](trace:f8a91c2d7b3e6a5f4c9d8e7b6a5f4c9d) | payment-service |
+| 2025-05-25 22:52:49 | frontend-proxy | INFO | [2025-05-25T22:52:49.152Z] "GET /api/cart HTTP/1.1" 200 - via_upstream - "-" 0 24 2 2 "-" "python... | [01366d98...](trace:01366d986ed8a49882444b1569c938e0) | frontend-proxy |
+| 2025-05-25 22:52:47 | accounting | INFORMATION | Order details: {@OrderResult}. | - | accounting |
+| 2025-05-25 22:52:47 | fraud-detection | INFO | Consumed record with orderId: fa1d0a10-39ba-11f0-9877-debf89339049, and updated total count to: 1... | [ac36a9f5...](trace:ac36a9f58dbced6d24d8e3b141675301) | fraud-detection |
+
+*Showing 3 of 100 logs. Use maxRows parameter to adjust.*
+
+### XY Charts
+
+Create bar, line, or scatter charts for visualizing metrics, logs, or traces:
+
+```javascript
+// Generate a bar chart showing log counts by service
+mcp0_generateMarkdownVisualizations({
+  "config": {
+    "timeRange": {
+      "start": "now-24h",
+      "end": "now"
+    },
+    "config": {
+      "type": "xy-chart",
+      "chartType": "bar",
+      "xField": "Resource.service.name",
+      "yField": "count",
+      "dataType": "logs",
+      "title": "Log Count by Service",
+      "xAxisTitle": "Service",
+      "yAxisTitle": "Count"
+    }
+  }
+})
+```
+
+### Field Distribution Pie Chart
+
+Show the distribution of values for a specific field:
+
+```javascript
+// Generate a pie chart showing distribution of HTTP status codes
+mcp0_generateMarkdownVisualizations({
+  "config": {
+    "timeRange": {
+      "start": "now-24h",
+      "end": "now"
+    },
+    "config": {
+      "type": "field-distribution-pie",
+      "field": "http.status_code",
+      "dataType": "traces",
+      "maxSlices": 10,
+      "showData": true
+    }
+  }
+})
+```
+
+### Error Distribution Pie Chart
+
+Show the distribution of errors by service or type:
+
+```javascript
+// Generate a pie chart showing distribution of errors
+mcp0_generateMarkdownVisualizations({
+  "config": {
+    "timeRange": {
+      "start": "now-24h",
+      "end": "now"
+    },
+    "config": {
+      "type": "error-pie",
+      "services": ["payment", "checkout", "inventory"],
+      "maxResults": 10,
+      "showData": true
+    }
+  }
+})
+```
+
+### Service Health Chart
+
+Time series visualization of service health metrics:
+
+```javascript
+// Generate a service health chart for CPU usage
+mcp0_generateMarkdownVisualizations({
+  "config": {
+    "timeRange": {
+      "start": "now-6h",
+      "end": "now"
+    },
+    "config": {
+      "type": "service-health",
+      "services": ["payment", "checkout", "inventory"],
+      "metricField": "system.cpu.usage",
+      "aggregation": "avg",
+      "intervalCount": 12,
+      "yAxisLabel": "CPU Usage (%)"
+    }
+  }
+})
+```
+
+### Service Dependency Graph
+
+Visualize the relationships and call patterns between services:
+
+```javascript
+// Generate a service dependency graph
+mcp0_generateMarkdownVisualizations({
+  "config": {
+    "timeRange": {
+      "start": "now-24h",
+      "end": "now"
+    },
+    "config": {
+      "type": "service-dependency",
+      "query": "Resource.service.name:payment OR Resource.service.name:checkout"
+    }
+  }
+})
+```
+
+**Example Output:**
+
+```mermaid
+graph TD
+  A["checkout"]
+  B["frontend"]
+  C["cart"]
+  D["payment"]
+  E["shipping"]
+  A --> |3 calls| B
+  A --> |6 calls| C
+  A --> |3 calls| D
+  A --> |4 calls| E
+  B --> |3 calls| A
+  B --> |1 calls| D
+  C --> |6 calls| A
+  C --> |3 calls| D
+  D --> |3 calls| A
+  E --> |4 calls| A
+```
+
+### Incident Graph
+
+Visualize the relationships between services during an incident:
+
+```javascript
+// Generate an incident graph
+mcp0_generateMarkdownVisualizations({
+  "config": {
+    "timeRange": {
+      "start": "now-1h",
+      "end": "now"
+    },
+    "config": {
+      "type": "incident-graph",
+      "service": "payment",
+      "query": "severity:high"
+    }
+  }
+})
+```
+
+### Span Gantt Chart
+
+Timeline visualization of spans in a distributed trace:
+
+```javascript
+// Generate a span Gantt chart for a specific trace
+mcp0_generateMarkdownVisualizations({
+  "config": {
+    "timeRange": {
+      "start": "now-1h",
+      "end": "now"
+    },
+    "config": {
+      "type": "span-gantt",
+      "spanId": "abcdef1234567890"
+    }
+  }
+})
+```
+
+### Markdown Table
+
+Tabular representation of OTEL data:
+
+```javascript
+// Generate a markdown table of trace data
+mcp0_generateMarkdownVisualizations({
+  "config": {
+    "timeRange": {
+      "start": "now-1h",
+      "end": "now"
+    },
+    "config": {
+      "type": "markdown-table",
+      "headers": ["Timestamp", "Service", "Operation", "Duration", "Status"],
+      "fieldMappings": ["timestamp", "Resource.service.name", "name", "duration", "status.code"],
+      "queryType": "traces",
+      "query": {},
+      "maxRows": 20
+    }
+  }
+})
+```
+
+### Metrics Time Series Table
+
+Tabular representation of metrics over time intervals:
+
+```javascript
+// Generate a metrics time series table
+mcp0_generateMarkdownVisualizations({
+  "config": {
+    "timeRange": {
+      "start": "now-6h",
+      "end": "now"
+    },
+    "config": {
+      "type": "metrics-time-series-table",
+      "metricField": "system.memory.usage",
+      "services": ["payment", "checkout", "inventory"],
+      "intervalCount": 6,
+      "formatValue": "decimal2"
+    }
+  }
 })
 ```
 

@@ -74,7 +74,7 @@ export class MarkdownVisualizationsTool {
       maxResults,
       query
     );
-    
+
     // Return the mermaid chart wrapped in a code block
     return '```mermaid\n' + mermaidChart + '\n```';
   }
@@ -108,7 +108,7 @@ export class MarkdownVisualizationsTool {
       intervalCount,
       query
     );
-    
+
     // Return the mermaid chart wrapped in a code block
     return '```mermaid\n' + mermaidChart + '\n```';
   }
@@ -160,7 +160,7 @@ export class MarkdownVisualizationsTool {
               timeInterval: z.string().optional().describe('Time interval for time-based charts (e.g., "1h", "1d")'),
               query: z.string().optional().describe('Optional query to filter the data (e.g. "service:frontend")')
             }),
-            
+
             // Error Pie Chart Configuration
             z.object({
               type: z.literal('error-pie').describe('Error distribution pie chart - Shows the distribution of errors by service or type'),
@@ -169,7 +169,7 @@ export class MarkdownVisualizationsTool {
               maxResults: z.number().optional().describe('Maximum number of results to show (default: 10)'),
               query: z.string().optional().describe('Optional query to filter errors (e.g. "level:error AND message:timeout")')
             }),
-            
+
             // Service Health Chart Configuration
             z.object({
               type: z.literal('service-health').describe('Service health chart - Time series visualization of service health metrics'),
@@ -182,20 +182,20 @@ export class MarkdownVisualizationsTool {
               intervalCount: z.number().optional().describe('Number of time intervals to display (default: 6)'),
               query: z.string().optional().describe('Optional query to filter metrics (e.g. "name:http_requests_total")')
             }),
-            
+
             // Service Dependency Graph Configuration
             z.object({
               type: z.literal('service-dependency').describe('Service dependency graph - Visualizes the relationships and call patterns between services'),
               query: z.string().optional().describe('Optional query to filter service dependencies (e.g. "Resource.service.name:payment")')
             }),
-            
+
             // Incident Graph Configuration
             z.object({
               type: z.literal('incident-graph').describe('Incident graph - Visualizes the relationships between services during an incident'),
               service: z.string().optional().describe('Optional service name to focus on'),
               query: z.string().optional().describe('Optional query to filter incidents (e.g. "severity:high")')
             }),
-            
+
             // Incident Timeline Configuration
             z.object({
               type: z.literal('incident-timeline').describe('Incident timeline - Shows a chronological view of events during an incident'),
@@ -208,14 +208,14 @@ export class MarkdownVisualizationsTool {
               correlateEvents: z.boolean().optional().describe('Whether to correlate related events across telemetry types (default: true)'),
               useRelativeTime: z.boolean().optional().describe('Whether to show timestamps relative to the first event (default: false)')
             }),
-            
+
             // Span Gantt Chart Configuration
             z.object({
               type: z.literal('span-gantt').describe('Span Gantt chart - Timeline visualization of spans in a distributed trace'),
               spanId: z.string().describe('Span ID to visualize'),
               query: z.string().optional().describe('Optional query to filter related spans (e.g. "Resource.service.name:payment")')
             }),
-            
+
             // Markdown Table Configuration
             z.object({
               type: z.literal('markdown-table').describe('Markdown table - Tabular representation of OTEL data'),
@@ -227,7 +227,7 @@ export class MarkdownVisualizationsTool {
               alignment: z.array(z.enum(['left', 'center', 'right'])).optional().describe('Column alignments'),
               queryString: z.string().optional().describe('Optional query string to further filter the data')
             }),
-            
+
             // Metrics Time Series Table Configuration
             z.object({
               type: z.literal('metrics-time-series-table').describe('Metrics time series table - Tabular representation of metrics over time intervals'),
@@ -236,6 +236,18 @@ export class MarkdownVisualizationsTool {
               intervalCount: z.number().optional().describe('Number of time intervals to display (default: 6)'),
               formatValue: z.enum(['raw', 'percent', 'integer', 'decimal1', 'decimal2']).optional().describe('Format for metric values (default: "decimal2")'),
               query: z.string().optional().describe('Optional query to filter metrics (e.g. "name:http_requests_total")')
+            }),
+
+            // Logs Table Configuration
+            z.object({
+              type: z.literal('logs-table').describe('Logs table - Tabular representation of logs with customizable fields'),
+              pattern: z.string().optional().describe('Text to search within log messages and fields'),
+              service: z.string().optional().describe('Filter to logs from a specific service'),
+              services: z.array(z.string()).optional().describe('Filter to logs from multiple services (overrides service parameter)'),
+              level: z.string().optional().describe('Filter by log severity (e.g., "error", "info", "warn")'),
+              fields: z.array(z.string()).optional().describe('Additional fields to include in the table'),
+              maxRows: z.number().optional().default(20).describe('Maximum number of rows to display (default: 20)'),
+              includeTraceLinks: z.boolean().optional().default(true).describe('Include links to traces when available (default: true)')
             })
           ]).describe('Visualization-specific configuration')
         }).describe('Visualization configuration')
@@ -245,28 +257,28 @@ export class MarkdownVisualizationsTool {
         try {
           const { timeRange, config } = args.config;
           const type = config.type; // Extract type from the config object
-          
+
           // Generate the visualization based on the type
           const visualization = await this.generateVisualization(type, config, timeRange);
-          
-          const output: MCPToolOutput = { 
+
+          const output: MCPToolOutput = {
             content: [
               { type: 'text', text: visualization }
-            ] 
+            ]
           };
-          
+
           logger.info('[MCP TOOL] markdown-visualizations result generated successfully');
           return output;
         } catch (error) {
-          logger.error('[MCP TOOL] markdown-visualizations error', { 
+          logger.error('[MCP TOOL] markdown-visualizations error', {
             error: error instanceof Error ? error.message : String(error),
             stack: error instanceof Error ? error.stack : undefined
           });
-          return { 
-            content: [{ 
-              type: 'text', 
-              text: `Error generating markdown visualization: ${error instanceof Error ? error.message : String(error)}` 
-            }] 
+          return {
+            content: [{
+              type: 'text',
+              text: `Error generating markdown visualization: ${error instanceof Error ? error.message : String(error)}`
+            }]
           };
         }
       }
@@ -289,7 +301,7 @@ export class MarkdownVisualizationsTool {
         if (typeof response === 'string') {
           return response;
         }
-        
+
         // Otherwise, extract text from the tool response object
         if (response && response.content && response.content.length > 0) {
           const item = response.content[0];
@@ -297,7 +309,7 @@ export class MarkdownVisualizationsTool {
         }
         return '';
       };
-      
+
       switch (type) {
         case 'field-distribution-pie': {
           // Use the FieldDistributionPieChartTool
@@ -307,7 +319,7 @@ export class MarkdownVisualizationsTool {
           const showData = config.showData || false;
           const title = config.title || `Distribution of ${field}`;
           const query = config.query;
-          
+
           try {
             const result = await this.fieldDistributionPieChartTool.generateFieldDistributionPieChart(
               timeRange.start,
@@ -325,7 +337,7 @@ export class MarkdownVisualizationsTool {
             return `### Error Generating Field Distribution Pie Chart\n\nUnable to generate the field distribution visualization: ${error instanceof Error ? error.message : String(error)}`;
           }
         }
-        
+
         case 'xy-chart': {
           // Use the XYChartTool
           const chartType = config.chartType || 'bar';
@@ -347,7 +359,7 @@ export class MarkdownVisualizationsTool {
           const yMax = config.yMax;
           const timeInterval = config.timeInterval;
           const query = config.query;
-          
+
           try {
             const result = await this.xyChartTool.generateXYChart(
               timeRange.start,
@@ -378,7 +390,7 @@ export class MarkdownVisualizationsTool {
             return `### Error Generating XY Chart\n\nUnable to generate the XY chart visualization: ${error instanceof Error ? error.message : String(error)}`;
           }
         }
-        
+
         case 'error-pie': {
           // Use the ErrorPieChartTool
           const maxResults = config.maxResults || 10;
@@ -386,7 +398,7 @@ export class MarkdownVisualizationsTool {
           const services = config.services || [];
           const title = config.title || 'Error Distribution';
           const query = config.query;
-          
+
           try {
             // Access the error pie chart tool through a wrapper method
             const result = await this.generateErrorPieChart(
@@ -406,7 +418,7 @@ export class MarkdownVisualizationsTool {
 Unable to generate the error distribution visualization: ${error instanceof Error ? error.message : String(error)}`;
           }
         }
-        
+
         case 'service-health': {
           // Use the ServiceHealthChartTool
           const services = config.services || [];
@@ -414,7 +426,7 @@ Unable to generate the error distribution visualization: ${error instanceof Erro
           const title = config.title || 'Service Health';
           const yAxisLabel = config.yAxisLabel || 'Value';
           const query = config.query;
-          
+
           try {
             // Access the service health chart tool through a wrapper method
             const result = await this.generateServiceHealthChart(
@@ -438,11 +450,11 @@ Unable to generate the error distribution visualization: ${error instanceof Erro
 Unable to generate the service health visualization: ${error instanceof Error ? error.message : String(error)}`;
           }
         }
-        
+
         case 'service-dependency': {
           // Use the ServiceDependencyGraphTool
           const query = config.query;
-          
+
           try {
             const result = await this.serviceDependencyGraphTool.generateServiceDependencyGraph(
               timeRange.start,
@@ -457,17 +469,17 @@ Unable to generate the service health visualization: ${error instanceof Error ? 
 Unable to generate the service dependency visualization: ${error instanceof Error ? error.message : String(error)}`;
           }
         }
-        
+
         case 'span-gantt': {
           // Use the SpanGanttChartTool
           const spanId = config.spanId;
           const query = config.query;
-          
+
           if (!spanId) {
             logger.warn('[MarkdownVisualizationsTool] Missing spanId for span-gantt visualization');
             return '```mermaid\ngantt\n    title Span Gantt Chart Error\n    section Error\n    Missing Span ID :crit, a1, 0, 1s\n```';
           }
-          
+
           try {
             const result = await this.spanGanttChartTool.generateSpanGanttChart(spanId, query);
             return extractContent(result);
@@ -478,13 +490,13 @@ Unable to generate the service dependency visualization: ${error instanceof Erro
 Unable to generate the span gantt visualization: ${error instanceof Error ? error.message : String(error)}`;
           }
         }
-        
+
         case 'incident-graph': {
           // Use the IncidentGraphTool
           // Get the service name from config (optional)
           const service = config.service || undefined;
           const query = config.query;
-          
+
           try {
             const result = await this.incidentGraphTool.extractIncidentGraph(
               timeRange.start,
@@ -500,7 +512,7 @@ Unable to generate the span gantt visualization: ${error instanceof Error ? erro
 Unable to generate the incident graph visualization: ${error instanceof Error ? error.message : String(error)}`;
           }
         }
-        
+
         case 'incident-timeline': {
           // Use the IncidentTimelineTool
           const services = config.services || [];
@@ -511,7 +523,7 @@ Unable to generate the incident graph visualization: ${error instanceof Error ? 
           const timeFormat = config.timeFormat || 'HH:mm';
           const correlateEvents = config.correlateEvents !== undefined ? config.correlateEvents : true;
           const useRelativeTime = config.useRelativeTime !== undefined ? config.useRelativeTime : false;
-          
+
           try {
             const result = await this.incidentTimelineTool.generateIncidentTimeline(
               timeRange.start,
@@ -531,7 +543,7 @@ Unable to generate the incident graph visualization: ${error instanceof Error ? 
             return `### Error Generating Incident Timeline\n\nUnable to generate the incident timeline visualization: ${error instanceof Error ? error.message : String(error)}`;
           }
         }
-        
+
         case 'markdown-table': {
           // Use the MarkdownTableTool
           const headers = config.headers || ['Column 1', 'Column 2', 'Column 3'];
@@ -541,7 +553,7 @@ Unable to generate the incident graph visualization: ${error instanceof Error ? 
           const maxRows = config.maxRows || 100;
           const alignment = config.alignment;
           const title = config.title || 'Sample Table';
-          
+
           try {
             const result = await this.markdownTableTool.generateMarkdownTable(
               timeRange.start,
@@ -562,7 +574,7 @@ Unable to generate the incident graph visualization: ${error instanceof Error ? 
 Unable to generate the table visualization: ${error instanceof Error ? error.message : String(error)}`;
           }
         }
-        
+
         case 'metrics-time-series-table': {
           // Use the MarkdownTableTool for metrics time series
           const metricField = config.metricField || 'metric.value';
@@ -571,7 +583,7 @@ Unable to generate the table visualization: ${error instanceof Error ? error.mes
           const formatValue = config.formatValue || 'decimal2';
           const title = config.title || 'Metrics Time Series';
           const query = config.query;
-          
+
           try {
             const result = await this.markdownTableTool.generateMetricsTimeSeriesTable(
               timeRange.start,
@@ -591,9 +603,58 @@ Unable to generate the table visualization: ${error instanceof Error ? error.mes
 Unable to generate the metrics time series visualization: ${error instanceof Error ? error.message : String(error)}`;
           }
         }
-        
+
+        case 'logs-table':
+          // Use the LogsTableTool via the MarkdownTableTool
+          const pattern = config.pattern;
+          const service = config.service;
+          const services = config.services;
+          const level = config.level;
+          const fields = config.fields || ['timestamp', 'service', 'level', 'message'];
+          const maxRows = config.maxRows || 20;
+          const includeTraceLinks = config.includeTraceLinks !== undefined ? config.includeTraceLinks : true;
+
+          // Determine which services to use
+          let serviceFilter: string | string[] | undefined = undefined;
+          if (services && services.length > 0) {
+            serviceFilter = services;
+          } else if (service) {
+            serviceFilter = service;
+          }
+
+          try {
+            // Create a query object for the markdown table tool
+            const query: any = {};
+            if (pattern) query.search = pattern;
+            if (serviceFilter) query.service = serviceFilter;
+            if (level) query.level = level;
+
+            // Use the markdown table tool to generate a logs table
+            const headers = ['Timestamp', 'Service', 'Level', 'Message', ...(fields.filter((f: string) => !['timestamp', 'service', 'level', 'message'].includes(f)))];
+            const fieldMappings = ['@timestamp', 'Resource.service.name', 'level', 'message', ...(fields.filter((f: string) => !['timestamp', 'service', 'level', 'message'].includes(f)))];
+
+            const result = await this.markdownTableTool.generateMarkdownTable(
+              timeRange.start,
+              timeRange.end,
+              headers,
+              'logs',
+              query,
+              fieldMappings,
+              maxRows,
+              undefined,
+              'Logs Table'
+            );
+            return extractContent(result);
+          } catch (error) {
+            logger.error('[MarkdownVisualizationsTool] Error generating logs table', { error });
+            return `### Error Generating Logs Table
+
+Unable to generate the logs table visualization: ${error instanceof Error ? error.message : String(error)}`;
+          }
+
+
         default:
-          logger.error('[MarkdownVisualizationsTool] Unsupported visualization type', { type });
+          logger.error('[MarkdownVisualizationsTool] Unsupported visualization type', { visualizationType: type });
           return `### Error: Unsupported Visualization Type
 
 The visualization type '${type}' is not supported.`;
