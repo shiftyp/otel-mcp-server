@@ -20,7 +20,7 @@ export class LogsAdapter extends ElasticsearchCore {
    * @param logLevel Optional log level to filter by (e.g., 'error', 'info')
    * @returns Array of log objects with structured data
    */
-  public async searchOtelLogs(pattern: string, serviceOrServices?: string | string[], logLevel?: string): Promise<{
+  public async searchOtelLogs(pattern: string, serviceOrServices?: string | string[], logLevel?: string, startTime?: string, endTime?: string): Promise<{
     timestamp: string;
     service: string;
     level: string;
@@ -29,7 +29,7 @@ export class LogsAdapter extends ElasticsearchCore {
     span_id?: string;
     attributes?: Record<string, any>;
   }[]> {
-    logger.info('[ES Adapter] Searching logs', { pattern, serviceOrServices, logLevel });
+    logger.info('[ES Adapter] Searching logs', { pattern, serviceOrServices, logLevel, startTime, endTime });
     
     try {
       // Prepare service filter if provided
@@ -41,12 +41,12 @@ export class LogsAdapter extends ElasticsearchCore {
       const query: any = {
         bool: {
           must: [
-            // Very wide time range to capture all logs
+            // Time range for logs
             {
               range: {
                 '@timestamp': {
-                  gte: 'now-30d',  // Look back 30 days
-                  lte: 'now'
+                  gte: startTime || 'now-30d',  // Use provided start time or default to 30 days
+                  lte: endTime || 'now'        // Use provided end time or default to now
                 }
               }
             }

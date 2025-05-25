@@ -24,9 +24,13 @@ export function registerLogTools(server: McpServer, esAdapter: ElasticsearchAdap
       pattern: z.string().optional().describe('Text to search within log messages and fields'),
       service: z.string().optional().describe('Filter to logs from a specific service'),
       services: z.array(z.string()).optional().describe('Filter to logs from multiple services (overrides service parameter)'),
-      level: z.string().optional().describe('Filter by log severity (e.g., "error", "info", "warn")')
+      level: z.string().optional().describe('Filter by log severity (e.g., "error", "info", "warn")'),
+      timeRange: z.object({
+        start: z.string().describe('Start time in ISO 8601 format or Elasticsearch date math (e.g., "now-24h")'),
+        end: z.string().describe('End time in ISO 8601 format or Elasticsearch date math (e.g., "now")')
+      }).optional().describe('Time window for log search')
     },
-    async (args: { pattern?: string, service?: string, services?: string[], level?: string }, extra: unknown) => {
+    async (args: { pattern?: string, service?: string, services?: string[], level?: string, timeRange?: { start: string, end: string } }, extra: unknown) => {
       // Determine which services to use
       let serviceFilter: string | string[] | undefined = undefined;
       if (args.services && args.services.length > 0) {
@@ -35,12 +39,18 @@ export function registerLogTools(server: McpServer, esAdapter: ElasticsearchAdap
         serviceFilter = args.service;
       }
       
+      // Extract time range if provided
+      const startTime = args.timeRange?.start;
+      const endTime = args.timeRange?.end;
+      
       // Search OTEL logs in Elasticsearch for the given pattern (in message/content fields)
       logger.info('[MCP TOOL] logs.search calling searchOtelLogs', { 
         pattern: args.pattern, 
         service: args.service,
         services: args.services,
-        level: args.level
+        level: args.level,
+        startTime,
+        endTime
       });
       
       // Define the type for log objects returned by searchOtelLogs
@@ -55,7 +65,7 @@ export function registerLogTools(server: McpServer, esAdapter: ElasticsearchAdap
       };
       
       try {
-        const logs = await esAdapter.searchOtelLogs(args.pattern || '', serviceFilter, args.level);
+        const logs = await esAdapter.searchOtelLogs(args.pattern || '', serviceFilter, args.level, startTime, endTime);
         
         if (!logs.length) {
           const levelInfo = args.level ? ` with level "${args.level}"` : '';
