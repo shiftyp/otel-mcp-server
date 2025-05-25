@@ -382,7 +382,15 @@ export class ElasticsearchAdapter extends EventEmitter {
   }
   
   // Logs methods
-  public async searchOtelLogs(pattern: string, serviceOrServices?: string | string[]): Promise<string[]> {
+  public async searchOtelLogs(pattern: string, serviceOrServices?: string | string[]): Promise<{
+    timestamp: string;
+    service: string;
+    level: string;
+    message: string;
+    trace_id?: string;
+    span_id?: string;
+    attributes?: Record<string, any>;
+  }[]> {
     return this.logsAdapter.searchOtelLogs(pattern, serviceOrServices);
   }
   

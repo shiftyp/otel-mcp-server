@@ -62,31 +62,67 @@ export class PatternDetector {
         this.addServiceFilter(must, serviceOrServices);
       }
       
-      // Create pattern queries
-      const patternQueries = patterns.map(pattern => ({
-        query_string: {
-          query: `message:*${pattern}*`,
-          analyze_wildcard: true
+      // Create a runtime field for message extraction
+      const runtime_mappings = {
+        "extracted_message": {
+          type: "keyword",
+          script: {
+            source: `
+              def source = doc['_source'];
+              def body = "";
+              
+              if (source.containsKey('Body')) {
+                body = source.Body;
+              } else if (source.containsKey('body')) {
+                body = source.body;
+              } else if (source.containsKey('message')) {
+                body = source.message;
+              }
+              
+              if (body != null && body.length() > 0) {
+                emit(body);
+              } else {
+                emit("Unknown message");
+              }
+            `
+          }
         }
-      }));
+      };
+      
+      // Create pattern queries that use the runtime field
+      const patternQueries = patterns.map(pattern => {
+        return {
+          query_string: {
+            query: `extracted_message:*${pattern}*`,
+            analyze_wildcard: true
+          }
+        };
+      });
       
       // Query for pattern frequency over time
       const aggQuery = {
         size: 0,
         query: {
           bool: {
-            must,
-            should: patternQueries,
-            minimum_should_match: 1
+            must: [
+              ...must,
+              {
+                bool: {
+                  should: patternQueries,
+                  minimum_should_match: 1
+                }
+              }
+            ]
           }
         },
+        runtime_mappings,
         aggs: {
           patterns: {
             filters: {
               filters: patterns.reduce((acc: Record<string, any>, pattern) => {
                 acc[pattern] = {
                   query_string: {
-                    query: `message:*${pattern}*`,
+                    query: `extracted_message:*${pattern}*`,
                     analyze_wildcard: true
                   }
                 };

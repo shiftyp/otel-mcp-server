@@ -108,8 +108,24 @@ export class ErrorPieChartTool {
               }
             },
             {
-              query_string: {
-                query: query
+              bool: {
+                should: [
+                  // Primary OpenTelemetry field
+                  { term: { 'SeverityText': 'ERROR' } },
+                  { term: { 'SeverityText': 'FATAL' } },
+                  { term: { 'SeverityText': 'CRITICAL' } },
+                  { term: { 'SeverityText': 'error' } },
+                  { term: { 'SeverityText': 'fatal' } },
+                  { term: { 'SeverityText': 'critical' } },
+                  // Legacy fields for backward compatibility
+                  { term: { 'level': 'error' } },
+                  { term: { 'level': 'fatal' } },
+                  { term: { 'level': 'critical' } },
+                  { term: { 'severity.text': 'ERROR' } },
+                  { term: { 'severity.text': 'FATAL' } },
+                  { term: { 'severity.text': 'CRITICAL' } }
+                ],
+                minimum_should_match: 1
               }
             }
           ]
@@ -131,11 +147,41 @@ export class ErrorPieChartTool {
       // Use the logs query API with error aggregation
       const result = await this.esAdapter.queryLogs({
         size: 0,
+        runtime_mappings: {
+          "error_message": {
+            type: "keyword",
+            script: {
+              source: `
+                def source = doc['_source'];
+                def body = "";
+                
+                if (source.containsKey('Body')) {
+                  body = source.Body;
+                } else if (source.containsKey('body')) {
+                  body = source.body;
+                } else if (source.containsKey('message')) {
+                  body = source.message;
+                }
+                
+                if (body != null && body.length() > 0) {
+                  def newlineIndex = body.indexOf('\n');
+                  if (newlineIndex > 0) {
+                    emit(body.substring(0, newlineIndex));
+                  } else {
+                    emit(body.length() > 100 ? body.substring(0, 100) + "..." : body);
+                  }
+                } else {
+                  emit("Unknown error");
+                }
+              `
+            }
+          }
+        },
         query: queryObj,
         aggs: {
           error_types: {
             terms: {
-              field: 'body.keyword',
+              field: "error_message",
               size: maxResults
             }
           }
@@ -168,7 +214,12 @@ export class ErrorPieChartTool {
       // The topErrors method returns objects that may have service, level, etc.
       // but TypeScript doesn't know about these properties
       const errorObj = error as any;
-      const service = errorObj.service || errorObj.level || 'unknown';
+      // Extract service name from various possible fields
+      const service = errorObj.service || 
+                     errorObj['Resource.service.name'] || 
+                     errorObj['resource.attributes.service.name'] || 
+                     errorObj['service.name'] || 
+                     'unknown';
       const count = errorObj.count || 1;
       
       if (serviceErrors.has(service)) {

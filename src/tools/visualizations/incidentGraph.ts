@@ -208,15 +208,79 @@ export class IncidentGraphTool {
    */
   private toIncidentMermaid(nodes: any[], edges: any[]): string {
     const mermaidLines = ["flowchart TD"];
-    for (const edge of edges) {
-      const fromNode = nodes.find(n => n.id === edge.from);
-      const toNode = nodes.find(n => n.id === edge.to);
-      const fromLabel = fromNode ? (fromNode.service ? `${fromNode.service}:${fromNode.name}` : fromNode.name) : edge.from;
-      const toLabel = toNode ? (toNode.service ? `${toNode.service}:${toNode.name}` : toNode.name) : edge.to;
-      let label = '';
-      if (edge.label) label = `|${edge.label}|`;
-      mermaidLines.push(`${fromLabel} -->${label} ${toLabel}`);
+    
+    // Create maps for deduplication
+    const nodeIdMap = new Map(); // Original node ID to Mermaid node ID
+    const labelToNodeId = new Map(); // Display label to Mermaid node ID
+    const nodeIdToCount = new Map(); // Track number of occurrences for each node type
+    let nodeCounter = 1;
+    
+    // First pass: group similar nodes by their display label
+    for (const node of nodes) {
+      const service = node.service || '';
+      const name = node.name || '';
+      
+      // Create a display label with the service and name
+      const displayLabel = service ? `${service}#58;${name}` : name;
+      
+      // Check if we've already seen this label
+      if (labelToNodeId.has(displayLabel)) {
+        // Reuse the existing node ID for this label
+        const existingNodeId = labelToNodeId.get(displayLabel);
+        nodeIdMap.set(node.id, existingNodeId);
+        
+        // Increment the count for this node type
+        const currentCount = nodeIdToCount.get(displayLabel) || 1;
+        nodeIdToCount.set(displayLabel, currentCount + 1);
+      } else {
+        // Create a new node ID for this label
+        const nodeId = `node${nodeCounter++}`;
+        labelToNodeId.set(displayLabel, nodeId);
+        nodeIdMap.set(node.id, nodeId);
+        nodeIdToCount.set(displayLabel, 1);
+      }
     }
+    
+    // Second pass: define deduplicated nodes with counts
+    for (const [displayLabel, nodeId] of labelToNodeId.entries()) {
+      const count = nodeIdToCount.get(displayLabel) || 1;
+      // Only show count if more than 1
+      const labelWithCount = count > 1 ? `${displayLabel} (${count})` : displayLabel;
+      mermaidLines.push(`  ${nodeId}["${labelWithCount}"]`);
+    }
+    
+    // Track edges to deduplicate them
+    const edgeMap = new Map();
+    
+    // Now add all the edges using the node IDs (deduplicated)
+    for (const edge of edges) {
+      const fromNodeId = nodeIdMap.get(edge.from) || `unknown_${edge.from}`;
+      const toNodeId = nodeIdMap.get(edge.to) || `unknown_${edge.to}`;
+      
+      // Skip self-loops
+      if (fromNodeId === toNodeId) continue;
+      
+      // Create a unique key for this edge
+      const edgeKey = `${fromNodeId}->${toNodeId}`;
+      
+      // Check if we've already seen this edge
+      if (edgeMap.has(edgeKey)) {
+        // Increment the count for this edge
+        const currentCount = edgeMap.get(edgeKey);
+        edgeMap.set(edgeKey, currentCount + 1);
+      } else {
+        // Add this as a new edge
+        edgeMap.set(edgeKey, 1);
+      }
+    }
+    
+    // Add deduplicated edges with counts
+    for (const [edgeKey, count] of edgeMap.entries()) {
+      const [fromNodeId, toNodeId] = edgeKey.split('->');
+      let label = count > 1 ? `|"${count} calls"|` : '';
+      mermaidLines.push(`  ${fromNodeId} -->${label} ${toNodeId}`);
+    }
+    
     return mermaidLines.join('\n');
   }
 }

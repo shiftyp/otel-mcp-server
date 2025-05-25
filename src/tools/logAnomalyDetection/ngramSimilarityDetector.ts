@@ -51,16 +51,44 @@ export class NgramSimilarityDetector {
         this.addServiceFilter(must, serviceOrServices);
       }
       
+      // Create a runtime field for message extraction
+      const runtime_mappings = {
+        "extracted_message": {
+          type: "keyword",
+          script: {
+            source: `
+              def source = doc['_source'];
+              def body = "";
+              
+              if (source.containsKey('Body')) {
+                body = source.Body;
+              } else if (source.containsKey('body')) {
+                body = source.body;
+              } else if (source.containsKey('message')) {
+                body = source.message;
+              }
+              
+              if (body != null && body.length() > 0) {
+                emit(body);
+              } else {
+                emit("Unknown message");
+              }
+            `
+          }
+        }
+      };
+      
       // First, get the most frequent terms in the message field
       // This helps us identify potential patterns to analyze
       const termsQuery = {
         size: 0,
+        runtime_mappings,
         query: { bool: { must } },
         aggs: {
-          message_terms: {
+          extracted_terms: {
             significant_terms: {
-              field: "Body.keyword",
-              size: 20,
+              field: "extracted_message",
+              size: 30,
               min_doc_count: 5
             }
           }
@@ -68,7 +96,7 @@ export class NgramSimilarityDetector {
       };
       
       const termsResp = await this.esAdapter.queryLogs(termsQuery);
-      const significantTerms = termsResp.aggregations?.message_terms?.buckets || [];
+      const significantTerms = termsResp.aggregations?.extracted_terms?.buckets || [];
       
       if (significantTerms.length === 0) {
         logger.warn('[NgramSimilarityDetector] No significant terms found');
@@ -90,13 +118,14 @@ export class NgramSimilarityDetector {
         // Use fuzzy matching to find similar messages
         const fuzzyQuery = {
           size: maxResults > 100 ? 100 : maxResults,
+          runtime_mappings,
           query: {
             bool: {
               must: [
                 ...must,
                 {
                   match: {
-                    "Body": {
+                    "extracted_message": {
                       query: term,
                       fuzziness: "AUTO",
                       operator: "and"
@@ -106,7 +135,12 @@ export class NgramSimilarityDetector {
               ]
             }
           },
-          _source: ["Body", "level", "Resource.service.name", "@timestamp"]
+          _source: [
+            "level", "severity", "severity_text", "SeverityText", "log.level",
+            "service", "service.name", "Resource.service.name", "resource.service.name",
+            "@timestamp", "timestamp"
+          ],
+          fields: ["extracted_message"]
         };
         
         const fuzzyResp = await this.esAdapter.queryLogs(fuzzyQuery);
@@ -115,13 +149,27 @@ export class NgramSimilarityDetector {
         if (similarMessages.length < 5) continue; // Skip if not enough similar messages
         
         // Extract messages and metadata
-        const messages = similarMessages.map((hit: any) => hit._source.Body || '').filter(Boolean);
-        const logLevels = similarMessages.map((hit: any) => 
-          hit._source.level || hit._source['log.level']
-        ).filter(Boolean);
-        const services = similarMessages.map((hit: any) => 
-          hit._source.Resource?.service?.name || hit._source['service.name']
-        ).filter(Boolean);
+        const messages = similarMessages.map((hit: any) => {
+          // Use the extracted message from the runtime field
+          return hit.fields?.extracted_message?.[0] || 'Unknown message';
+        }).filter(Boolean);
+        
+        const logLevels = similarMessages.map((hit: any) => {
+          // Try all possible severity fields
+          return hit._source.SeverityText || 
+                 hit._source.level || 
+                 hit._source['log.level'] || 
+                 hit._source.severity || 
+                 'unknown';
+        }).filter(Boolean);
+        
+        const services = similarMessages.map((hit: any) => {
+          // Try all possible service fields
+          return hit._source.Resource?.service?.name || 
+                 hit._source['Resource.service.name'] || 
+                 hit._source['service.name'] || 
+                 'unknown';
+        }).filter(Boolean);
         const timestamps = similarMessages.map((hit: any) => hit._source['@timestamp']).filter(Boolean);
         
         // Find dominant log level and service

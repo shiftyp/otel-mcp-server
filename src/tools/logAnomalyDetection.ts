@@ -316,7 +316,10 @@ export class LogAnomalyDetectionTool {
       multi_match: {
         query: keyword,
         fields: [
+          // Primary OpenTelemetry fields
           'body^3', 
+          // Alternative fields
+          'Body^3',
           'message^3',
           'exception.message^2',
           'error.message^2',
@@ -359,12 +362,14 @@ export class LogAnomalyDetectionTool {
     
     hits.forEach((hit: any) => {
       const source = hit._source || {};
-      const message = source.message || source.body || '';
+      const message = source.body || source.Body || source.message || '';
       const timestamp = source['@timestamp'] || '';
       const level = source.severity || source.level || '';
       const serviceName = source.resource?.service?.name || 
                          source.Resource?.service?.name || 
-                         source.service?.name || 'unknown';
+                         source['Resource.service.name'] || 
+                         source.service?.name || 
+                         source['service.name'] || 'unknown';
       
       // Determine which patterns matched
       const matchedPatterns = patternKeywords.filter(pattern => 
@@ -533,10 +538,12 @@ export class LogAnomalyDetectionTool {
         const source = hit._source || {};
         const value = this.getNestedValue(source, field);
         const timestamp = source['@timestamp'] || '';
-        const message = source.message || source.body || '';
+        const message = source.body || source.Body || source.message || '';
         const serviceName = source.resource?.service?.name || 
                            source.Resource?.service?.name || 
-                           source.service?.name || 'unknown';
+                           source['Resource.service.name'] || 
+                           source.service?.name || 
+                           source['service.name'] || 'unknown';
         
         // Calculate z-score
         const zScore = stdDev !== 0 ? Math.abs((value - mean) / stdDev) : 0;
@@ -674,11 +681,13 @@ export class LogAnomalyDetectionTool {
         // Process sample logs
         sampleHits.forEach((hit: any) => {
           const source = hit._source || {};
-          const message = source.message || source.body || '';
+          const message = source.body || source.Body || source.message || '';
           const timestamp = source['@timestamp'] || '';
           const serviceName = source.resource?.service?.name || 
                              source.Resource?.service?.name || 
-                             source.service?.name || 'unknown';
+                             source['Resource.service.name'] || 
+                             source.service?.name || 
+                             source['service.name'] || 'unknown';
           
           // Find the significance score for this message
           const significanceInfo = significantMessages.find((msg: any) => msg.key === message);

@@ -60,6 +60,11 @@ export class IncidentTimelineTool {
         {
           bool: {
             should: [
+              { term: { 'SeverityText': 'ERROR' } },
+              { term: { 'SeverityText': 'WARN' } },
+              { term: { 'SeverityText': 'error' } },
+              { term: { 'SeverityText': 'warn' } },
+              // Keep legacy fields for backward compatibility
               { term: { 'severity.text': 'ERROR' } },
               { term: { 'severity.text': 'WARN' } },
               { term: { 'level': 'error' } },
@@ -124,7 +129,8 @@ export class IncidentTimelineTool {
           const service = source['Resource.service.name'] || 
                           source['resource.attributes.service.name'] || 
                           source['service.name'] || 'unknown';
-          const level = source['severity.text'] || 
+          const level = source['SeverityText'] || 
+                        source['severity.text'] || 
                         source['level'] || 
                         source['Severity'] || 'INFO';
           const message = source['body'] || 

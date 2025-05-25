@@ -53,7 +53,8 @@ export class LogFieldsTool {
               ]
             }
           },
-          _source: ['*']
+          // Ensure we get the full source document to access all fields including ignored ones
+          _source: true
         };
         
         // Execute the query to get sample logs

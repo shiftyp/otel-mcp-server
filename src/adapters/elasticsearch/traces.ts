@@ -358,8 +358,39 @@ export class TracesAdapter extends ElasticsearchCore {
   /**
    * Query traces with a custom query
    */
+  /**
+   * Query traces with a custom query
+   * Supports runtime_mappings and script_fields for advanced Elasticsearch queries
+   */
   public async queryTraces(query: any): Promise<any> {
-    return this.request('POST', '/traces-*/_search', query);
+    // If _source isn't explicitly set to false, ensure it's enabled
+    if (query._source !== false) {
+      query._source = query._source || true;
+    }
+    
+    // Log the query for debugging purposes
+    logger.debug('[ES Adapter] Executing traces query', { 
+      hasRuntimeMappings: !!query.runtime_mappings,
+      hasScriptFields: !!query.script_fields,
+      queryStructure: Object.keys(query)
+    });
+    
+    try {
+      return await this.request('POST', '/traces-*/_search', query);
+    } catch (error: unknown) {
+      // Provide more detailed error information for runtime field issues
+      if (error instanceof Error && 
+          (error.message.includes('runtime_mappings') || error.message.includes('script'))) {
+        logger.error('[ES Adapter] Error with runtime mappings or scripts in traces query', { 
+          error: error.message,
+          query: JSON.stringify(query)
+        });
+        throw new Error(`Error with runtime mappings or scripts in traces query: ${error.message}`);
+      }
+      
+      // Re-throw the original error
+      throw error;
+    }
   }
   
   /**

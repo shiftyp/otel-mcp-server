@@ -35,8 +35,40 @@ export function registerLogTools(server: McpServer, esAdapter: ElasticsearchAdap
       }
       
       // Search OTEL logs in Elasticsearch for the given pattern (in message/content fields)
-      const logs = await esAdapter.searchOtelLogs(args.pattern || '', serviceFilter);
-      const output: MCPToolOutput = { content: [{ type: 'text', text: logs.length ? logs.join('\n\n') : 'No logs found.' }] };
+      logger.info('[MCP TOOL] logs.search calling searchOtelLogs', { 
+        pattern: args.pattern, 
+        service: args.service,
+        services: args.services
+      });
+      
+      // Define the type for log objects returned by searchOtelLogs
+      type LogObject = {
+        timestamp: string;
+        service: string;
+        level: string;
+        message: string;
+        trace_id?: string;
+        span_id?: string;
+        attributes?: Record<string, any>;
+      };
+      
+      const logs = await esAdapter.searchOtelLogs(args.pattern || '', serviceFilter) as LogObject[];
+      
+      // Add detailed logging
+      logger.info('[MCP TOOL] logs.search raw result', { 
+        pattern: args.pattern,
+        logCount: logs.length,
+        firstLogSample: logs.length > 0 ? JSON.stringify(logs[0]).substring(0, 100) + '...' : 'No logs'
+      });
+      
+      // Return the raw log objects as JSON
+      const output: MCPToolOutput = { 
+        content: [{ 
+          type: 'text', 
+          text: logs.length ? JSON.stringify(logs, null, 2) : 'No logs found.' 
+        }] 
+      };
+      
       logger.info('[MCP TOOL] logs.search result', { 
         pattern: args.pattern, 
         service: args.service,
@@ -118,7 +150,9 @@ export function registerLogTools(server: McpServer, esAdapter: ElasticsearchAdap
       aggs: z.record(z.unknown()).optional(),
       _source: z.union([z.array(z.string()), z.boolean()]).optional(),
       search: z.string().optional(),
-      agg: z.record(z.unknown()).optional()
+      agg: z.record(z.unknown()).optional(),
+      runtime_mappings: z.record(z.unknown()).optional().describe('Runtime field mappings for Elasticsearch'),
+      script_fields: z.record(z.unknown()).optional().describe('Script fields for Elasticsearch')
     }).strict().describe('Query OTEL logs in Elasticsearch. Use the same query format as Elasticsearch. Run searchForLogFields to get a list of available fields and their schemas.') },
     async (args: { query?: any }) => {
       const resp = await esAdapter.queryLogs(args.query);

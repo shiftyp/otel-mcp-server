@@ -65,7 +65,9 @@ export function registerBasicTraceTools(server: McpServer, esAdapter: Elasticsea
       aggs: z.record(z.unknown()).optional(),
       _source: z.union([z.array(z.string()), z.boolean()]).optional(),
       search: z.string().optional(),
-      agg: z.record(z.unknown()).optional()
+      agg: z.record(z.unknown()).optional(),
+      runtime_mappings: z.record(z.unknown()).optional().describe('Runtime field mappings for Elasticsearch'),
+      script_fields: z.record(z.unknown()).optional().describe('Script fields for Elasticsearch')
     }).strict().describe('Query OTEL traces in Elasticsearch. Use the same query format as Elasticsearch. Run searchForTraceFields to get a list of available fields and their schemas.') },
     async (args: { query: any }, extra: unknown) => {
       try {
