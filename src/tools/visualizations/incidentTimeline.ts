@@ -811,16 +811,16 @@ export class IncidentTimelineTool {
             color = ' : warning';
           }
           
-          // Add icon based on source using emojis with proper escaping
+          // Add text labels instead of emojis to avoid rendering issues
           let icon = '';
           if (event.source === 'metric') {
-            icon = '📊 '; // Chart emoji
+            icon = 'Metric ';
           } else if (event.correlatedTraceId) {
-            icon = '🔄 '; // Refresh emoji
+            icon = 'Correlated ';
           } else if (event.level.toUpperCase().includes('ERROR')) {
-            icon = '❌ '; // Cross mark emoji
+            icon = 'Error ';
           } else {
-            icon = '⚠️ '; // Warning emoji
+            icon = 'Warning ';
           }
           
           // Use the escapeMermaidString utility to handle special characters and emojis
