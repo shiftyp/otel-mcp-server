@@ -293,49 +293,62 @@ export function registerMetricTools(server: McpServer, esAdapter: ElasticsearchA
   // Span duration anomaly detection with flexible hybrid approach
   registerMcpTool(
     server,
-    'detectSpanDurationAnomalies',
+    'spanDurationAnomaliesDetect',
     {
-      startTime: z.string().describe('Start time (ISO 8601) - The beginning of the time window.'),
-      endTime: z.string().describe('End time (ISO 8601) - The end of the time window.'),
-      service: z.string().optional().describe('Service name (optional) - The service whose spans to analyze. If not provided, spans from all services will be included unless services array is specified. Use listServices to get a list of available services.'),
-      services: z.array(z.string()).optional().describe('Services array (optional) - Multiple services whose spans to analyze. Takes precedence over service parameter if both are provided.'),
-      operation: z.string().optional().describe('Operation name (optional) - The specific operation to analyze. If not provided, all operations will be analyzed and results will be grouped by operation.'),
-      absoluteThreshold: z.number().optional().describe('Absolute duration threshold in nanoseconds (default: 1000000 = 1ms).'),
-      zScoreThreshold: z.number().optional().describe('Z-score threshold (default: 3) - Number of standard deviations above mean to flag as anomaly.'),
-      percentileThreshold: z.number().optional().describe('Percentile threshold (default: 95) - Flag spans above this percentile.'),
-      iqrMultiplier: z.number().optional().describe('IQR multiplier (default: 1.5) - For IQR-based outlier detection.'),
-      significancePValue: z.number().optional().describe('Significance p-value (default: 0.05) - Statistical significance level for rare event detection.'),
-      maxResults: z.number().optional().describe('Maximum number of results to return (default: 100).'),
-      groupByOperation: z.boolean().optional().describe('Whether to analyze each operation separately (default: true).')
+      timeRange: z.object({
+        start: z.string().describe('Start time in ISO 8601 format'),
+        end: z.string().describe('End time in ISO 8601 format')
+      }).describe('Time window for analysis'),
+      service: z.string().optional().describe('Filter to spans from a specific service'),
+      services: z.array(z.string()).optional().describe('Filter to spans from multiple services (overrides service parameter)'),
+      operation: z.string().optional().describe('Filter to a specific operation name'),
+      thresholds: z.object({
+        absolute: z.number().optional().describe('Minimum duration in nanoseconds (default: 1000000)'),
+        zScore: z.number().optional().describe('Standard deviations from mean (default: 3)'),
+        percentile: z.number().optional().describe('Percentile threshold (default: 95)'),
+        iqrMultiplier: z.number().optional().describe('IQR multiplier for outlier detection (default: 1.5)'),
+        significance: z.number().optional().describe('P-value for statistical tests (default: 0.05)')
+      }).optional().describe('Detection sensitivity settings'),
+      groupByOperation: z.boolean().optional().describe('Analyze each operation separately (default: true)'),
+      maxResults: z.number().optional().describe('Maximum number of anomalies to return (default: 100)')
     },
-    async (args: { 
-      startTime: string, 
-      endTime: string, 
-      service?: string, 
-      services?: string[],
-      operation?: string, 
-      absoluteThreshold?: number,
-      zScoreThreshold?: number,
-      percentileThreshold?: number,
-      iqrMultiplier?: number,
-      maxResults?: number,
-      groupByOperation?: boolean
-    }) => {
-      const options = {
-        absoluteThreshold: args.absoluteThreshold,
-        zScoreThreshold: args.zScoreThreshold,
-        percentileThreshold: args.percentileThreshold,
-        iqrMultiplier: args.iqrMultiplier,
+    async (args: any) => {
+      // Extract time range
+      const startTime = args.timeRange?.start || args.startTime;
+      const endTime = args.timeRange?.end || args.endTime;
+      
+      if (!startTime || !endTime) {
+        throw new Error('Time range is required (either as timeRange object or startTime/endTime parameters)');
+      }
+      
+      // Prepare options for the anomaly detection
+      const options: any = {
         maxResults: args.maxResults,
         groupByOperation: args.groupByOperation
       };
+      
+      // Add threshold settings if specified
+      if (args.thresholds) {
+        if (args.thresholds.absolute) options.absoluteThreshold = args.thresholds.absolute;
+        if (args.thresholds.zScore) options.zScoreThreshold = args.thresholds.zScore;
+        if (args.thresholds.percentile) options.percentileThreshold = args.thresholds.percentile;
+        if (args.thresholds.iqrMultiplier) options.iqrMultiplier = args.thresholds.iqrMultiplier;
+        if (args.thresholds.significance) options.significancePValue = args.thresholds.significance;
+      }
+      
+      // Add legacy threshold parameters for backward compatibility
+      if (args.absoluteThreshold) options.absoluteThreshold = args.absoluteThreshold;
+      if (args.zScoreThreshold) options.zScoreThreshold = args.zScoreThreshold;
+      if (args.percentileThreshold) options.percentileThreshold = args.percentileThreshold;
+      if (args.iqrMultiplier) options.iqrMultiplier = args.iqrMultiplier;
+      if (args.significancePValue) options.significancePValue = args.significancePValue;
       
       // Determine which service parameter to use (services array takes precedence)
       const serviceParam = args.services && args.services.length > 0 ? args.services : args.service;
       
       const anomalies = await anomalyDetectionTool.detectSpanDurationAnomalies(
-        args.startTime,
-        args.endTime,
+        startTime,
+        endTime,
         serviceParam,
         args.operation,
         options
@@ -348,7 +361,7 @@ export function registerMetricTools(server: McpServer, esAdapter: ElasticsearchA
       // Handle both grouped and flat response formats for logging
       if (anomalies && typeof anomalies === 'object' && 'grouped_by_service' in anomalies) {
         // Grouped response
-        logger.info('[MCP TOOL] detectSpanDurationAnomalies result (grouped)', { 
+        logger.info('[MCP TOOL] spanDurationAnomaliesDetect result (grouped)', { 
           args, 
           totalAnomalies: anomalies.total_anomalies,
           serviceCount: Object.keys(anomalies.services).length
@@ -356,7 +369,7 @@ export function registerMetricTools(server: McpServer, esAdapter: ElasticsearchA
       } else {
         // Flat response
         const anomalyArray = Array.isArray(anomalies) ? anomalies : [];
-        logger.info('[MCP TOOL] detectSpanDurationAnomalies result', { 
+        logger.info('[MCP TOOL] spanDurationAnomaliesDetect result', { 
           args, 
           anomalyCount: anomalyArray.length,
           detectionMethods: anomalyArray.length > 0 ? 

@@ -13,8 +13,8 @@ export function registerBasicTraceTools(server: McpServer, esAdapter: Elasticsea
   // Analyze trace
   registerMcpTool(
     server,
-    'analyzeTrace',
-    { traceId: z.string().describe('The ID of the trace to analyze.') },
+    'traceAnalyze',
+    { traceId: z.string().describe('Unique identifier of the trace to analyze') },
     async (args: { traceId: string }, extra: unknown) => {
       try {
         const analysis = await esAdapter.analyzeTrace(args.traceId);
@@ -38,16 +38,16 @@ export function registerBasicTraceTools(server: McpServer, esAdapter: Elasticsea
   // Span lookup
   registerMcpTool(
     server,
-    'lookupSpan',
-    { SpanId: z.string().describe('The ID of the span to look up.') },
-    async (args: { SpanId: string }, extra: unknown) => {
+    'spanGet',
+    { spanId: z.string().describe('Unique identifier of the span to retrieve') },
+    async (args: { spanId: string }, extra: unknown) => {
       try {
-        const span = await esAdapter.spanLookup(args.SpanId);
+        const span = await esAdapter.spanLookup(args.spanId);
         const output: MCPToolOutput = { content: [{ type: 'text', text: span ? JSON.stringify(span, null, 2) : 'Span not found.' }] };
         logger.info('[MCP TOOL] span.lookup result', { args, output });
         return output;
       } catch (error) {
-        logger.error('[MCP TOOL] span.lookup error', { error, spanId: args.SpanId });
+        logger.error('[MCP TOOL] span.lookup error', { error, spanId: args.spanId });
         return { content: [{ type: 'text', text: `Error looking up span: ${error instanceof Error ? error.message : String(error)}` }] };
       }
     }
@@ -56,19 +56,19 @@ export function registerBasicTraceTools(server: McpServer, esAdapter: Elasticsea
   // Traces query
   registerMcpTool(
     server,
-    'queryTraces',
+    'tracesQuery',
     { query: z.object({
-      query: z.record(z.unknown()).optional(),
-      size: z.number().optional(),
-      from: z.number().optional(),
-      sort: z.any().optional(),
-      aggs: z.record(z.unknown()).optional(),
-      _source: z.union([z.array(z.string()), z.boolean()]).optional(),
-      search: z.string().optional(),
-      agg: z.record(z.unknown()).optional(),
-      runtime_mappings: z.record(z.unknown()).optional().describe('Runtime field mappings for Elasticsearch'),
-      script_fields: z.record(z.unknown()).optional().describe('Script fields for Elasticsearch')
-    }).strict().describe('Query OTEL traces in Elasticsearch. Use the same query format as Elasticsearch. Run searchForTraceFields to get a list of available fields and their schemas.') },
+      query: z.record(z.unknown()).optional().describe('Elasticsearch query object'),
+      size: z.number().optional().describe('Maximum number of results to return'),
+      from: z.number().optional().describe('Starting offset for pagination'),
+      sort: z.any().optional().describe('Sort order for results'),
+      aggs: z.record(z.unknown()).optional().describe('Aggregation definitions'),
+      _source: z.union([z.array(z.string()), z.boolean()]).optional().describe('Fields to include in results'),
+      search: z.string().optional().describe('Simple text search across fields'),
+      agg: z.record(z.unknown()).optional().describe('Simplified aggregation definition'),
+      runtime_mappings: z.record(z.unknown()).optional().describe('Dynamic field definitions'),
+      script_fields: z.record(z.unknown()).optional().describe('Computed fields using scripts')
+    }).strict().describe('Execute custom Elasticsearch query against trace data') },
     async (args: { query: any }, extra: unknown) => {
       try {
         const resp = await esAdapter.queryTraces(args.query);

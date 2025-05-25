@@ -19,12 +19,12 @@ export function registerLogTools(server: McpServer, esAdapter: ElasticsearchAdap
   // Logs search
   registerMcpTool(
     server,
-    'searchLogs',
+    'findLogs',
     { 
-      pattern: z.string().optional().describe('Search term to filter log fields.'),
-      service: z.string().optional().describe('Service name (optional) - Filter logs to only those from this service.'),
-      services: z.array(z.string()).optional().describe('Services array (optional) - Filter logs to only those from these services. Takes precedence over service parameter if both are provided.'),
-      level: z.string().optional().describe('Log level (optional) - Filter logs by severity level (e.g., "error", "info", "warn").')
+      pattern: z.string().optional().describe('Text to search within log messages and fields'),
+      service: z.string().optional().describe('Filter to logs from a specific service'),
+      services: z.array(z.string()).optional().describe('Filter to logs from multiple services (overrides service parameter)'),
+      level: z.string().optional().describe('Filter by log severity (e.g., "error", "info", "warn")')
     },
     async (args: { pattern?: string, service?: string, services?: string[], level?: string }, extra: unknown) => {
       // Determine which services to use
@@ -102,12 +102,12 @@ export function registerLogTools(server: McpServer, esAdapter: ElasticsearchAdap
   // Log fields schema with co-occurring fields
   registerMcpTool(
     server,
-    'searchForLogFields',
+    'logFieldsGet',
     { 
-      search: z.string().optional().describe('Search term to filter log fields.'),
-      service: z.string().optional().describe('Service name (optional) - Filter fields to only those present in data from this service.'),
-      services: z.array(z.string()).optional().describe('Services array (optional) - Filter fields to only those present in data from these services. Takes precedence over service parameter if both are provided.'),
-      useSourceDocument: z.boolean().optional().default(true).describe('Whether to include source document fields (default: true for logs)')
+      search: z.string().optional().describe('Filter fields by name pattern'),
+      service: z.string().optional().describe('Filter to fields from a specific service'),
+      services: z.array(z.string()).optional().describe('Filter to fields from multiple services (overrides service parameter)'),
+      useSourceDocument: z.boolean().optional().default(true).describe('Include source document fields in results')
     },
     async (args: { search?: string, service?: string, services?: string[], useSourceDocument?: boolean }, extra: unknown) => {
       try {
@@ -162,19 +162,19 @@ export function registerLogTools(server: McpServer, esAdapter: ElasticsearchAdap
   // Logs query
   registerMcpTool(
     server,
-    'queryLogs',
+    'logsQuery',
     { query: z.object({
-      query: z.record(z.unknown()).optional(),
-      size: z.number().optional(),
-      from: z.number().optional(),
-      sort: z.any().optional(),
-      aggs: z.record(z.unknown()).optional(),
-      _source: z.union([z.array(z.string()), z.boolean()]).optional().default(true).describe('Source fields to include (default: true - includes all fields including ignored ones)'),
-      search: z.string().optional(),
-      agg: z.record(z.unknown()).optional(),
-      runtime_mappings: z.record(z.unknown()).optional().describe('Runtime field mappings for Elasticsearch'),
-      script_fields: z.record(z.unknown()).optional().describe('Script fields for Elasticsearch')
-    }).strict().describe('Query OTEL logs in Elasticsearch. Use the same query format as Elasticsearch. Run searchForLogFields to get a list of available fields and their schemas.') },
+      query: z.record(z.unknown()).optional().describe('Elasticsearch query object'),
+      size: z.number().optional().describe('Maximum number of results to return'),
+      from: z.number().optional().describe('Starting offset for pagination'),
+      sort: z.any().optional().describe('Sort order for results'),
+      aggs: z.record(z.unknown()).optional().describe('Aggregation definitions'),
+      _source: z.union([z.array(z.string()), z.boolean()]).optional().default(true).describe('Fields to include in results'),
+      search: z.string().optional().describe('Simple text search across fields'),
+      agg: z.record(z.unknown()).optional().describe('Simplified aggregation definition'),
+      runtime_mappings: z.record(z.unknown()).optional().describe('Dynamic field definitions'),
+      script_fields: z.record(z.unknown()).optional().describe('Computed fields using scripts')
+    }).strict().describe('Execute custom Elasticsearch query against log data') },
     async (args: { query?: any }) => {
       const resp = await esAdapter.queryLogs(args.query);
       const output: MCPToolOutput = { content: [{ type: 'text', text: JSON.stringify(resp) }] };
@@ -186,27 +186,33 @@ export function registerLogTools(server: McpServer, esAdapter: ElasticsearchAdap
   // Log anomaly detection
   registerMcpTool(
     server,
-    'detectLogAnomalies',
+    'logAnomaliesDetect',
     {
-      startTime: z.string().describe('Start time (ISO 8601) - The beginning of the time window to analyze.'),
-      endTime: z.string().describe('End time (ISO 8601) - The end of the time window to analyze.'),
-      service: z.string().optional().describe('Service name (optional) - The service whose logs to analyze. If not provided, logs from all services will be included unless services array is specified.'),
-      services: z.array(z.string()).optional().describe('Services array (optional) - Multiple services whose logs to analyze. Takes precedence over service parameter if both are provided.'),
-      methods: z.array(z.enum(['frequency', 'pattern', 'statistical', 'clustering', 'cardinality', 'ngramSimilarity'])).optional().describe('Detection methods to use (optional) - Array of methods to apply. Default is all methods.'),
-      lookbackWindow: z.string().optional().describe('Lookback window (optional) - Time window for baseline, e.g., "7d" for 7 days. Default is "7d".'),
-      interval: z.string().optional().describe('Interval (optional) - Time bucket size for analysis, e.g., "1h" for hourly. Default is "1h".'),
-      spikeThreshold: z.number().optional().describe('Spike threshold (optional) - Multiplier above baseline to consider anomalous. Default is 3.'),
-      patternKeywords: z.array(z.string()).optional().describe('Pattern keywords (optional) - Custom error patterns to search for.'),
-      includeDefaultPatterns: z.boolean().optional().describe('Include default patterns (optional) - Whether to include default error patterns. Default is true.'),
-      zScoreThreshold: z.number().optional().describe('Z-score threshold (optional) - Standard deviations from mean to flag as anomaly. Default is 3.'),
-      percentileThreshold: z.number().optional().describe('Percentile threshold (optional) - Percentile above which to flag as anomaly. Default is 95.'),
-      cardinalityThreshold: z.number().optional().describe('Cardinality threshold (optional) - Multiplier above normal cardinality to flag as anomaly. Default is 2.'),
-      significancePValue: z.number().optional().describe('Significance p-value (optional) - Statistical significance level for rare event detection. Default is 0.05.'),
-      maxResults: z.number().optional().describe('Max results (optional) - Maximum number of anomalies to return. Default is 100.')
+      timeRange: z.object({
+        start: z.string().describe('Start time in ISO 8601 format'),
+        end: z.string().describe('End time in ISO 8601 format')
+      }).describe('Time window for analysis'),
+      service: z.string().optional().describe('Filter to logs from a specific service'),
+      services: z.array(z.string()).optional().describe('Filter to logs from multiple services (overrides service parameter)'),
+      methods: z.array(z.enum(['frequency', 'pattern', 'statistical', 'clustering', 'cardinality', 'ngramSimilarity'])).optional().describe('Detection methods to apply'),
+      thresholds: z.object({
+        spike: z.number().optional().describe('Multiplier above baseline (default: 3)'),
+        zScore: z.number().optional().describe('Standard deviations from mean (default: 3)'),
+        percentile: z.number().optional().describe('Percentile threshold (default: 95)'),
+        cardinality: z.number().optional().describe('Cardinality multiplier (default: 2)'),
+        significance: z.number().optional().describe('P-value for statistical tests (default: 0.05)')
+      }).optional().describe('Detection sensitivity settings'),
+      options: z.object({
+        lookbackWindow: z.string().optional().describe('Time window for baseline, e.g., "7d" for 7 days'),
+        interval: z.string().optional().describe('Time bucket size for analysis, e.g., "1h" for hourly'),
+        patternKeywords: z.array(z.string()).optional().describe('Custom error patterns to search for'),
+        includeDefaultPatterns: z.boolean().optional().describe('Include default error patterns (default: true)')
+      }).optional().describe('Analysis configuration options'),
+      maxResults: z.number().optional().describe('Maximum number of anomalies to return (default: 100)')
     },
     async (args: any, extra: unknown) => {
       try {
-        logger.info('[MCP TOOL] detectLogAnomalies called', { args });
+        logger.info('[MCP TOOL] logAnomaliesDetect called', { args });
         
         // Determine which services to use
         let serviceFilter: string | string[] | undefined = undefined;
@@ -219,23 +225,54 @@ export function registerLogTools(server: McpServer, esAdapter: ElasticsearchAdap
         // Prepare options for the anomaly detection
         const options: any = {};
         
-        // Only include specified options
+        // Extract time range
+        const startTime = args.timeRange?.start || args.startTime;
+        const endTime = args.timeRange?.end || args.endTime;
+        
+        if (!startTime || !endTime) {
+          throw new Error('Time range is required (either as timeRange object or startTime/endTime parameters)');
+        }
+        
+        // Add detection methods if specified
         if (args.methods) options.methods = args.methods;
-        if (args.lookbackWindow) options.lookbackWindow = args.lookbackWindow;
-        if (args.interval) options.interval = args.interval;
+        
+        // Add threshold settings if specified
+        if (args.thresholds) {
+          if (args.thresholds.spike) options.spikeThreshold = args.thresholds.spike;
+          if (args.thresholds.zScore) options.zScoreThreshold = args.thresholds.zScore;
+          if (args.thresholds.percentile) options.percentileThreshold = args.thresholds.percentile;
+          if (args.thresholds.cardinality) options.cardinalityThreshold = args.thresholds.cardinality;
+          if (args.thresholds.significance) options.significancePValue = args.thresholds.significance;
+        }
+        
+        // Add legacy threshold parameters for backward compatibility
         if (args.spikeThreshold) options.spikeThreshold = args.spikeThreshold;
-        if (args.patternKeywords) options.patternKeywords = args.patternKeywords;
-        if (args.includeDefaultPatterns !== undefined) options.includeDefaultPatterns = args.includeDefaultPatterns;
         if (args.zScoreThreshold) options.zScoreThreshold = args.zScoreThreshold;
         if (args.percentileThreshold) options.percentileThreshold = args.percentileThreshold;
         if (args.cardinalityThreshold) options.cardinalityThreshold = args.cardinalityThreshold;
         if (args.significancePValue) options.significancePValue = args.significancePValue;
+        
+        // Add analysis options
+        if (args.options) {
+          if (args.options.lookbackWindow) options.lookbackWindow = args.options.lookbackWindow;
+          if (args.options.interval) options.interval = args.options.interval;
+          if (args.options.patternKeywords) options.patternKeywords = args.options.patternKeywords;
+          if (args.options.includeDefaultPatterns !== undefined) options.includeDefaultPatterns = args.options.includeDefaultPatterns;
+        }
+        
+        // Add legacy options for backward compatibility
+        if (args.lookbackWindow) options.lookbackWindow = args.lookbackWindow;
+        if (args.interval) options.interval = args.interval;
+        if (args.patternKeywords) options.patternKeywords = args.patternKeywords;
+        if (args.includeDefaultPatterns !== undefined) options.includeDefaultPatterns = args.includeDefaultPatterns;
+        
+        // Add max results
         if (args.maxResults) options.maxResults = args.maxResults;
         
         // Detect log anomalies
         const anomalies = await logAnomalyDetectionTool.detectLogAnomalies(
-          args.startTime,
-          args.endTime,
+          startTime,
+          endTime,
           serviceFilter,
           options
         );

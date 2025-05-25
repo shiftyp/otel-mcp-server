@@ -16,8 +16,8 @@ export function registerTraceMetadataTools(server: McpServer, esAdapter: Elastic
   // Services
   registerMcpTool(
     server,
-    'listServices',
-    { search: z.string().optional() },
+    'servicesGet',
+    { search: z.string().optional().describe('Filter services by name pattern') },
     async (args: { search?: string } = {}) => {
       if (!args || typeof args !== 'object') args = {};
       logger.info('[MCP TOOL] services tool called with args', { args });
@@ -46,23 +46,18 @@ export function registerTraceMetadataTools(server: McpServer, esAdapter: Elastic
   // Top errors
   registerMcpTool(
     server,
-    'listTopErrors',
+    'errorsGetTop',
     {
-      startTime: z.string().describe('Start time (ISO 8601) - The beginning of the time window.'),
-      endTime: z.string().describe('End time (ISO 8601) - The end of the time window.'),
-      N: z.number().optional().default(10).describe('Number of top errors to return (default: 10).'),
-      service: z.string().optional().describe('Service name (optional) - The service whose errors to analyze. If not provided, errors from all services will be included unless services array is specified.'),
-      services: z.array(z.string()).optional().describe('Services array (optional) - Multiple services whose errors to analyze. Takes precedence over service parameter if both are provided.'),
-      search: z.string().optional().describe('Search pattern (optional) - Filter errors by matching this pattern in error messages, names, or other relevant fields.')
+      timeRange: z.object({
+        start: z.string().describe('Start time in ISO 8601 format'),
+        end: z.string().describe('End time in ISO 8601 format')
+      }).describe('Time window for analysis'),
+      limit: z.number().optional().default(10).describe('Maximum number of errors to return'),
+      service: z.string().optional().describe('Filter to errors from a specific service'),
+      services: z.array(z.string()).optional().describe('Filter to errors from multiple services (overrides service parameter)'),
+      pattern: z.string().optional().describe('Filter errors by text pattern')
     },
-    async (args: {
-      startTime: string;
-      endTime: string;
-      N?: number;
-      service?: string;
-      services?: string[];
-      search?: string;
-    }, extra: unknown) => {
+    async (args: any, extra: unknown) => {
       try {
         // Determine which services to use
         let serviceFilter: string | string[] | undefined = undefined;
@@ -72,8 +67,18 @@ export function registerTraceMetadataTools(server: McpServer, esAdapter: Elastic
           serviceFilter = args.service;
         }
         
+        // Extract time range and parameters
+        const startTime = args.timeRange?.start || args.startTime;
+        const endTime = args.timeRange?.end || args.endTime;
+        const limit = args.limit || args.N || 10;
+        const searchPattern = args.pattern || args.search;
+        
+        if (!startTime || !endTime) {
+          throw new Error('Time range is required (either as timeRange object or startTime/endTime parameters)');
+        }
+        
         // Get top errors with optional search pattern
-        const top = await esAdapter.topErrors(args.startTime, args.endTime, args.N, serviceFilter, args.search);
+        const top = await esAdapter.topErrors(startTime, endTime, limit, serviceFilter, searchPattern);
         
         if (!top.length) {
           const searchInfo = args.search ? ` matching pattern "${args.search}"` : '';
@@ -166,14 +171,14 @@ export function registerTraceMetadataTools(server: McpServer, esAdapter: Elastic
   // Trace fields
   registerMcpTool(
     server,
-    'searchForTraceFields',
+    'traceFieldsGet',
     { 
-      search: z.string().optional().describe('Search term to filter trace fields.'),
-      service: z.string().optional().describe('Service name (optional) - Filter fields to only those present in data from this service.'),
-      services: z.array(z.string()).optional().describe('Services array (optional) - Filter fields to only those present in data from these services. Takes precedence over service parameter if both are provided.'),
-      useSourceDocument: z.boolean().optional().default(false).describe('Whether to include source document fields (default: false for traces)')
+      search: z.string().optional().describe('Filter fields by name pattern'),
+      service: z.string().optional().describe('Filter to fields from a specific service'),
+      services: z.array(z.string()).optional().describe('Filter to fields from multiple services (overrides service parameter)'),
+      includeSourceFields: z.boolean().optional().default(false).describe('Include source document fields in results')
     },
-    async (args: { search?: string, service?: string, services?: string[], useSourceDocument?: boolean }, _extra: unknown) => {
+    async (args: { search?: string, service?: string, services?: string[], includeSourceFields?: boolean }, _extra: unknown) => {
       try {
         logger.info('[MCP TOOL] traceFieldsSchema called', { args });
         
@@ -186,7 +191,9 @@ export function registerTraceMetadataTools(server: McpServer, esAdapter: Elastic
         }
         
         // Get trace fields, filtered by service if specified
-        const fields = await traceFieldsTool.getTraceFields(args.search, serviceFilter, args.useSourceDocument);
+        // Use the new parameter name, with fallback to default value
+        const includeSourceFields = args.includeSourceFields !== undefined ? args.includeSourceFields : false;
+        const fields = await traceFieldsTool.getTraceFields(args.search, serviceFilter, includeSourceFields);
         
         const output: MCPToolOutput = { content: [{ type: 'text', text: JSON.stringify(fields, null, 2) }] };
         logger.info('[MCP TOOL] traceFieldsSchema result', { args, fieldCount: fields.length });
