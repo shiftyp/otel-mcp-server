@@ -58,20 +58,31 @@ export class OtelMetricsTools {
   }
 
   /**
-   * Get a searchable list of all metric fields (dot notation)
+   * Get a searchable list of all metric fields (dot notation) with co-occurring fields
    * @param search Optional search term to filter fields
    * @param serviceOrServices Optional service name or array of services to filter fields by
-   * @returns Array of field paths
+   * @param useSourceDocument Whether to include source document fields (default: false for metrics)
+   * @returns Object containing fields array and co-occurrences map
    */
-  async getAllMetricFields(search?: string, serviceOrServices?: string | string[]): Promise<string[]> {
+  async getAllMetricFields(search?: string, serviceOrServices?: string | string[], useSourceDocument: boolean = false): Promise<{ fields: string[], coOccurrences: Record<string, string[]> }> {
     // If no service filter, use the standard approach
     if (!serviceOrServices) {
       const allFields: string[] = await getAllMetricFieldPaths(this.esAdapter.callEsRequest.bind(this.esAdapter));
-      if (!search || search.trim() === '') return allFields;
-      const s = search.toLowerCase();
-      return allFields.filter((f: string) => f.toLowerCase().includes(s));
+      
+      // Apply search filter if provided
+      let filteredFields = allFields;
+      if (search && search.trim() !== '') {
+        const s = search.toLowerCase();
+        filteredFields = allFields.filter(f => f.toLowerCase().includes(s));
+      }
+      
+      // Since we don't have document data in this case, return with empty co-occurrences
+      return {
+        fields: filteredFields,
+        coOccurrences: {}
+      };
     }
-    
+
     // Convert service parameter to array for consistent handling
     const services = Array.isArray(serviceOrServices) ? serviceOrServices : [serviceOrServices];
     
@@ -83,12 +94,13 @@ export class OtelMetricsTools {
           must: [
             { exists: { field: '@timestamp' } }
           ],
-          filter: [
-            { terms: { 'resource.service.name': services } }
-          ]
+          filter: services.length > 0 ? [
+            { terms: { 'service.name': services } }
+          ] : []
         }
       },
-      _source: ['*']
+      // Use _source parameter based on useSourceDocument setting
+      _source: useSourceDocument ? true : ['*']
     };
     
     // Execute the query to get sample documents
@@ -96,29 +108,50 @@ export class OtelMetricsTools {
     const hits = response.hits?.hits || [];
     
     if (hits.length === 0) {
-      return [];
+      return {
+        fields: [],
+        coOccurrences: {}
+      };
     }
     
-    // Extract all field paths from the sample documents
+    // Extract all field paths and track co-occurring fields
     const fieldSet = new Set<string>();
+    const fieldCoOccurrences: Record<string, Set<string>> = {};
     
     // Helper function to recursively extract field paths
-    const extractFields = (obj: any, path = '') => {
-      if (!obj || typeof obj !== 'object') return;
+    const extractFields = (obj: any, path = '', result: string[] = []) => {
+      if (!obj || typeof obj !== 'object') return result;
       
       Object.entries(obj).forEach(([key, value]) => {
         const currentPath = path ? `${path}.${key}` : key;
+        result.push(currentPath);
         fieldSet.add(currentPath);
         
         if (value && typeof value === 'object' && !Array.isArray(value)) {
-          extractFields(value, currentPath);
+          extractFields(value, currentPath, result);
         }
       });
+      
+      return result;
     };
     
-    // Process each document
+    // Process each document to find co-occurring fields
     hits.forEach((hit: any) => {
-      extractFields(hit._source);
+      const docFields = extractFields(hit._source);
+      
+      // Update co-occurrence information for each field in this document
+      docFields.forEach(field => {
+        if (!fieldCoOccurrences[field]) {
+          fieldCoOccurrences[field] = new Set<string>();
+        }
+        
+        // Add all other fields as co-occurring with this field
+        docFields.forEach(coField => {
+          if (field !== coField) {
+            fieldCoOccurrences[field].add(coField);
+          }
+        });
+      });
     });
     
     // Convert to array and apply search filter if provided
@@ -129,7 +162,16 @@ export class OtelMetricsTools {
       fields = fields.filter(f => f.toLowerCase().includes(s));
     }
     
-    return fields;
+    // Return field paths along with co-occurrence information
+    return {
+      fields,
+      coOccurrences: Object.fromEntries(
+        Object.entries(fieldCoOccurrences).map(([field, coFields]) => [
+          field, 
+          Array.from(coFields).sort()
+        ])
+      )
+    };
   }
 
   /**

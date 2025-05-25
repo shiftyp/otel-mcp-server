@@ -21,9 +21,10 @@ export function registerMetricTools(server: McpServer, esAdapter: ElasticsearchA
     { 
       search: z.string().optional().describe('Search term to filter metric fields.'),
       service: z.string().optional().describe('Service name (optional) - Filter fields to only those present in data from this service.'),
-      services: z.array(z.string()).optional().describe('Services array (optional) - Filter fields to only those present in data from these services. Takes precedence over service parameter if both are provided.')
+      services: z.array(z.string()).optional().describe('Services array (optional) - Filter fields to only those present in data from these services. Takes precedence over service parameter if both are provided.'),
+      useSourceDocument: z.boolean().optional().default(false).describe('Whether to include source document fields (default: false for metrics)')
     },
-    async (args: { search?: string, service?: string, services?: string[] }, _extra: unknown) => {
+    async (args: { search?: string, service?: string, services?: string[], useSourceDocument?: boolean }, _extra: unknown) => {
       try {
         logger.info('[MCP TOOL] searchMetricsFields called', { args });
         
@@ -36,7 +37,7 @@ export function registerMetricTools(server: McpServer, esAdapter: ElasticsearchA
         }
         
         // Get all metric fields from Elasticsearch, filtered by service if specified
-        const allFields = await otelMetricsTools.getAllMetricFields(args.search, serviceFilter);
+        const { fields: allFields, coOccurrences } = await otelMetricsTools.getAllMetricFields(args.search, serviceFilter, args.useSourceDocument);
         const schemas = await otelMetricsTools.getGroupedMetricSchemas(args.search);
         
         // Use a recent time range for metric type detection (last 24 hours)
@@ -101,7 +102,7 @@ export function registerMetricTools(server: McpServer, esAdapter: ElasticsearchA
             metricType: metricTypeInfo.metricType,
             typeInfo: metricTypeInfo,
             count: 0, // We don't have count information for metrics
-            coOccurringFields: [] // We don't track co-occurring fields for metrics yet
+            coOccurringFields: coOccurrences[fieldName] || [] // Include co-occurring fields
           };
         });
         

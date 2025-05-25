@@ -16,9 +16,10 @@ export class TraceFieldsTool {
    * Get trace field definitions with co-occurring fields
    * @param search Optional search term to filter fields
    * @param serviceOrServices Optional service name or array of services to filter fields by
+   * @param useSourceDocument Whether to include source document fields (default: false for traces)
    * @returns Array of field information objects
    */
-  async getTraceFields(search?: string, serviceOrServices?: string | string[]): Promise<FieldInfo[]> {
+  async getTraceFields(search?: string, serviceOrServices?: string | string[], useSourceDocument: boolean = false): Promise<FieldInfo[]> {
     try {
       logger.info('[TraceFieldsTool] Getting trace fields', { search, serviceOrServices });
       
@@ -43,7 +44,8 @@ export class TraceFieldsTool {
               ]
             }
           },
-          _source: ['*']
+          // Use _source parameter based on useSourceDocument setting
+          _source: useSourceDocument ? true : ['*']
         };
         
         // Execute the query to get sample spans

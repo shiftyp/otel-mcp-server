@@ -106,9 +106,10 @@ export function registerLogTools(server: McpServer, esAdapter: ElasticsearchAdap
     { 
       search: z.string().optional().describe('Search term to filter log fields.'),
       service: z.string().optional().describe('Service name (optional) - Filter fields to only those present in data from this service.'),
-      services: z.array(z.string()).optional().describe('Services array (optional) - Filter fields to only those present in data from these services. Takes precedence over service parameter if both are provided.')
+      services: z.array(z.string()).optional().describe('Services array (optional) - Filter fields to only those present in data from these services. Takes precedence over service parameter if both are provided.'),
+      useSourceDocument: z.boolean().optional().default(true).describe('Whether to include source document fields (default: true for logs)')
     },
-    async (args: { search?: string, service?: string, services?: string[] }, extra: unknown) => {
+    async (args: { search?: string, service?: string, services?: string[], useSourceDocument?: boolean }, extra: unknown) => {
       try {
         logger.info('[MCP TOOL] logFieldsSchema called', { args });
         
@@ -121,7 +122,7 @@ export function registerLogTools(server: McpServer, esAdapter: ElasticsearchAdap
         }
         
         // Get log fields, filtered by service if specified
-        const fields = await logFieldsTool.getLogFields(args.search, serviceFilter);
+        const fields = await logFieldsTool.getLogFields(args.search, serviceFilter, args.useSourceDocument);
         
         // Format the output
         const result = {
@@ -131,7 +132,7 @@ export function registerLogTools(server: McpServer, esAdapter: ElasticsearchAdap
             type: field.type,
             count: field.count,
             schema: field.schema,
-            coOccurringFields: field.coOccurringFields?.slice(0, 20) || []
+            coOccurringFields: field.coOccurringFields || []
           }))
         };
         
@@ -168,7 +169,7 @@ export function registerLogTools(server: McpServer, esAdapter: ElasticsearchAdap
       from: z.number().optional(),
       sort: z.any().optional(),
       aggs: z.record(z.unknown()).optional(),
-      _source: z.union([z.array(z.string()), z.boolean()]).optional(),
+      _source: z.union([z.array(z.string()), z.boolean()]).optional().default(true).describe('Source fields to include (default: true - includes all fields including ignored ones)'),
       search: z.string().optional(),
       agg: z.record(z.unknown()).optional(),
       runtime_mappings: z.record(z.unknown()).optional().describe('Runtime field mappings for Elasticsearch'),

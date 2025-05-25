@@ -170,9 +170,10 @@ export function registerTraceMetadataTools(server: McpServer, esAdapter: Elastic
     { 
       search: z.string().optional().describe('Search term to filter trace fields.'),
       service: z.string().optional().describe('Service name (optional) - Filter fields to only those present in data from this service.'),
-      services: z.array(z.string()).optional().describe('Services array (optional) - Filter fields to only those present in data from these services. Takes precedence over service parameter if both are provided.')
+      services: z.array(z.string()).optional().describe('Services array (optional) - Filter fields to only those present in data from these services. Takes precedence over service parameter if both are provided.'),
+      useSourceDocument: z.boolean().optional().default(false).describe('Whether to include source document fields (default: false for traces)')
     },
-    async (args: { search?: string, service?: string, services?: string[] }, _extra: unknown) => {
+    async (args: { search?: string, service?: string, services?: string[], useSourceDocument?: boolean }, _extra: unknown) => {
       try {
         logger.info('[MCP TOOL] traceFieldsSchema called', { args });
         
@@ -185,7 +186,7 @@ export function registerTraceMetadataTools(server: McpServer, esAdapter: Elastic
         }
         
         // Get trace fields, filtered by service if specified
-        const fields = await traceFieldsTool.getTraceFields(args.search, serviceFilter);
+        const fields = await traceFieldsTool.getTraceFields(args.search, serviceFilter, args.useSourceDocument);
         
         const output: MCPToolOutput = { content: [{ type: 'text', text: JSON.stringify(fields, null, 2) }] };
         logger.info('[MCP TOOL] traceFieldsSchema result', { args, fieldCount: fields.length });
