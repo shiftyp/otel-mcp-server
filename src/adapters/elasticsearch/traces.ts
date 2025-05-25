@@ -25,17 +25,40 @@ export class TracesAdapter extends ElasticsearchCore {
       
       logger.info('[ES Adapter] Found spans for trace', { traceId, spanCount: spans.length });
       
+      // Extract service name from various possible fields
+      const extractServiceName = (span: any): string => {
+        return span['Resource.service.name'] ||
+          (span.Resource && span.Resource.service && span.Resource.service.name) ||
+          (span.service && span.service.name) ||
+          (span.Attributes && span.Attributes['service.name']) ||
+          (span['Resource.k8s.deployment.name']) ||
+          (span.Resource && span.Resource.k8s && span.Resource.k8s.deployment && span.Resource.k8s.deployment.name) ||
+          // If we have a pod name, extract the service name part
+          (span['Resource.k8s.pod.name'] && (() => {
+            const podName = span['Resource.k8s.pod.name'];
+            const dashIndex = podName.lastIndexOf('-');
+            return dashIndex > 0 ? podName.substring(0, dashIndex) : podName;
+          })()) ||
+          'unknown';
+      };
+      
       // Basic trace analysis
       const analysis = {
         traceId,
         rootSpan,
         spanCount: spans.length,
-        serviceName: rootSpan.Resource?.service?.name || 'unknown',
+        serviceName: extractServiceName(rootSpan),
         operationName: rootSpan.Name || 'unknown',
         status: rootSpan.TraceStatus || 'unknown',
         errorCount: spans.filter((span: any) => span.TraceStatus === 2).length,
-        services: [...new Set(spans.map((span: any) => span.Resource?.service?.name || 'unknown'))],
+        services: [...new Set(spans.map(extractServiceName))],
       };
+      
+      logger.info('[ES Adapter] Trace analysis complete', { 
+        traceId, 
+        spanCount: spans.length, 
+        services: analysis.services
+      });
       
       return analysis;
     } catch (error) {

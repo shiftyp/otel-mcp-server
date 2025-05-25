@@ -382,7 +382,7 @@ export class ElasticsearchAdapter extends EventEmitter {
   }
   
   // Logs methods
-  public async searchOtelLogs(pattern: string, serviceOrServices?: string | string[]): Promise<{
+  public async searchOtelLogs(pattern: string, serviceOrServices?: string | string[], logLevel?: string): Promise<{
     timestamp: string;
     service: string;
     level: string;
@@ -391,11 +391,11 @@ export class ElasticsearchAdapter extends EventEmitter {
     span_id?: string;
     attributes?: Record<string, any>;
   }[]> {
-    return this.logsAdapter.searchOtelLogs(pattern, serviceOrServices);
+    return this.logsAdapter.searchOtelLogs(pattern, serviceOrServices, logLevel);
   }
   
-  public async topErrors(startTime: string, endTime: string, N = 10, serviceOrServices?: string | string[]): Promise<{ error: string, count: number }[]> {
-    return this.logsAdapter.topErrors(startTime, endTime, N, serviceOrServices);
+  public async topErrors(startTime: string, endTime: string, N = 10, serviceOrServices?: string | string[], searchPattern?: string): Promise<{ error: string, count: number, level?: string, service?: string, timestamp?: string, trace_id?: string, span_id?: string }[]> {
+    return this.logsAdapter.topErrors(startTime, endTime, N, serviceOrServices, searchPattern);
   }
   
   public async queryLogs(query: any): Promise<any> {

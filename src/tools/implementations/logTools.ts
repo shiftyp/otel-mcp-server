@@ -23,9 +23,10 @@ export function registerLogTools(server: McpServer, esAdapter: ElasticsearchAdap
     { 
       pattern: z.string().optional().describe('Search term to filter log fields.'),
       service: z.string().optional().describe('Service name (optional) - Filter logs to only those from this service.'),
-      services: z.array(z.string()).optional().describe('Services array (optional) - Filter logs to only those from these services. Takes precedence over service parameter if both are provided.')
+      services: z.array(z.string()).optional().describe('Services array (optional) - Filter logs to only those from these services. Takes precedence over service parameter if both are provided.'),
+      level: z.string().optional().describe('Log level (optional) - Filter logs by severity level (e.g., "error", "info", "warn").')
     },
-    async (args: { pattern?: string, service?: string, services?: string[] }, extra: unknown) => {
+    async (args: { pattern?: string, service?: string, services?: string[], level?: string }, extra: unknown) => {
       // Determine which services to use
       let serviceFilter: string | string[] | undefined = undefined;
       if (args.services && args.services.length > 0) {
@@ -38,7 +39,8 @@ export function registerLogTools(server: McpServer, esAdapter: ElasticsearchAdap
       logger.info('[MCP TOOL] logs.search calling searchOtelLogs', { 
         pattern: args.pattern, 
         service: args.service,
-        services: args.services
+        services: args.services,
+        level: args.level
       });
       
       // Define the type for log objects returned by searchOtelLogs
@@ -52,30 +54,48 @@ export function registerLogTools(server: McpServer, esAdapter: ElasticsearchAdap
         attributes?: Record<string, any>;
       };
       
-      const logs = await esAdapter.searchOtelLogs(args.pattern || '', serviceFilter) as LogObject[];
-      
-      // Add detailed logging
-      logger.info('[MCP TOOL] logs.search raw result', { 
-        pattern: args.pattern,
-        logCount: logs.length,
-        firstLogSample: logs.length > 0 ? JSON.stringify(logs[0]).substring(0, 100) + '...' : 'No logs'
-      });
-      
-      // Return the raw log objects as JSON
-      const output: MCPToolOutput = { 
-        content: [{ 
-          type: 'text', 
-          text: logs.length ? JSON.stringify(logs, null, 2) : 'No logs found.' 
-        }] 
-      };
-      
-      logger.info('[MCP TOOL] logs.search result', { 
-        pattern: args.pattern, 
-        service: args.service,
-        services: args.services,
-        logCount: logs.length 
-      });
-      return output;
+      try {
+        const logs = await esAdapter.searchOtelLogs(args.pattern || '', serviceFilter, args.level);
+        
+        if (!logs.length) {
+          const levelInfo = args.level ? ` with level "${args.level}"` : '';
+          const patternInfo = args.pattern ? ` matching "${args.pattern}"` : '';
+          return { content: [{ type: 'text', text: `No logs found${patternInfo}${levelInfo}.` }] } as MCPToolOutput;
+        }
+        
+        logger.info('[MCP TOOL] logs.search raw result', { 
+          pattern: args.pattern,
+          logCount: logs.length,
+          firstLogSample: logs.length > 0 ? JSON.stringify(logs[0]).substring(0, 100) + '...' : 'No logs'
+        });
+        
+        // Return the raw log objects as JSON
+        const output: MCPToolOutput = { 
+          content: [{ 
+            type: 'text', 
+            text: logs.length ? JSON.stringify(logs, null, 2) : 'No logs found.' 
+          }] 
+        };
+        
+        logger.info('[MCP TOOL] logs.search result', { 
+          pattern: args.pattern, 
+          service: args.service,
+          services: args.services,
+          logCount: logs.length 
+        });
+        return output;
+      } catch (error) {
+        logger.error('[MCP TOOL] logs.search error', { 
+          error: error instanceof Error ? error.message : String(error) 
+        });
+        
+        return { 
+          content: [{ 
+            type: 'text', 
+            text: `Error searching logs: ${error instanceof Error ? error.message : String(error)}` 
+          }] 
+        };
+      }
     }
   );
 

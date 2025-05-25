@@ -17,9 +17,10 @@ export class LogsAdapter extends ElasticsearchCore {
    * 
    * @param pattern Optional search pattern
    * @param serviceOrServices Optional service name or array of services to filter logs by
+   * @param logLevel Optional log level to filter by (e.g., 'error', 'info')
    * @returns Array of log objects with structured data
    */
-  public async searchOtelLogs(pattern: string, serviceOrServices?: string | string[]): Promise<{
+  public async searchOtelLogs(pattern: string, serviceOrServices?: string | string[], logLevel?: string): Promise<{
     timestamp: string;
     service: string;
     level: string;
@@ -28,7 +29,7 @@ export class LogsAdapter extends ElasticsearchCore {
     span_id?: string;
     attributes?: Record<string, any>;
   }[]> {
-    logger.info('[ES Adapter] Searching logs', { pattern, serviceOrServices });
+    logger.info('[ES Adapter] Searching logs', { pattern, serviceOrServices, logLevel });
     
     try {
       // Prepare service filter if provided
@@ -52,6 +53,22 @@ export class LogsAdapter extends ElasticsearchCore {
           ]
         }
       };
+      
+      // Add log level filter if provided
+      if (logLevel) {
+        const normalizedLevel = logLevel.toLowerCase();
+        query.bool.must.push({
+          bool: {
+            should: [
+              { term: { 'severity_text': normalizedLevel } },
+              { term: { 'SeverityText': normalizedLevel.toUpperCase() } },
+              { term: { 'log.level': normalizedLevel } },
+              { term: { 'severity': normalizedLevel } }
+            ],
+            minimum_should_match: 1
+          }
+        });
+      }
       
       // Add pattern search if provided
       if (pattern) {
@@ -198,12 +215,20 @@ export class LogsAdapter extends ElasticsearchCore {
   /**
    * Get the top N errors in logs for a time window
    * Following OpenTelemetry specification for logs and traces
+   * 
+   * @param startTime Start time in ISO format
+   * @param endTime End time in ISO format
+   * @param N Number of top errors to return
+   * @param serviceOrServices Optional service name or array of services to filter by
+   * @param searchPattern Optional search pattern to filter errors
+   * @returns Array of error objects with count and metadata
    */
   public async topErrors(
     startTime: string, 
     endTime: string, 
     N = 10, 
-    serviceOrServices?: string | string[]
+    serviceOrServices?: string | string[],
+    searchPattern?: string
   ): Promise<{ 
     error: string, 
     count: number, 
@@ -213,11 +238,12 @@ export class LogsAdapter extends ElasticsearchCore {
     trace_id?: string, 
     span_id?: string 
   }[]> {
-    logger.info('[ES Adapter] Finding top errors', { startTime, endTime, serviceOrServices });
+    logger.info('[ES Adapter] Finding top errors', { startTime, endTime, serviceOrServices, searchPattern });
     
     try {
       // First try to get errors from logs (following OTEL spec)
-      const logErrors = await this.errorAdapter.getErrorsFromLogs(startTime, endTime, N, serviceOrServices);
+      // Always use 'error' as the log level for the topErrors functionality
+      const logErrors = await this.errorAdapter.getErrorsFromLogs(startTime, endTime, N, serviceOrServices, searchPattern);
       
       // If we found errors in logs, return them
       if (logErrors.length > 0) {
@@ -227,7 +253,7 @@ export class LogsAdapter extends ElasticsearchCore {
       
       // If no errors in logs, try to get errors from traces
       logger.info('[ES Adapter] No errors found in logs, trying traces');
-      const traceErrors = await this.errorAdapter.getErrorsFromTraces(startTime, endTime, N, serviceOrServices);
+      const traceErrors = await this.errorAdapter.getErrorsFromTraces(startTime, endTime, N, serviceOrServices, searchPattern);
       
       if (traceErrors.length > 0) {
         logger.info('[ES Adapter] Found errors in traces', { count: traceErrors.length });

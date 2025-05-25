@@ -52,7 +52,8 @@ export function registerTraceMetadataTools(server: McpServer, esAdapter: Elastic
       endTime: z.string().describe('End time (ISO 8601) - The end of the time window.'),
       N: z.number().optional().default(10).describe('Number of top errors to return (default: 10).'),
       service: z.string().optional().describe('Service name (optional) - The service whose errors to analyze. If not provided, errors from all services will be included unless services array is specified.'),
-      services: z.array(z.string()).optional().describe('Services array (optional) - Multiple services whose errors to analyze. Takes precedence over service parameter if both are provided.')
+      services: z.array(z.string()).optional().describe('Services array (optional) - Multiple services whose errors to analyze. Takes precedence over service parameter if both are provided.'),
+      search: z.string().optional().describe('Search pattern (optional) - Filter errors by matching this pattern in error messages, names, or other relevant fields.')
     },
     async (args: {
       startTime: string;
@@ -60,6 +61,7 @@ export function registerTraceMetadataTools(server: McpServer, esAdapter: Elastic
       N?: number;
       service?: string;
       services?: string[];
+      search?: string;
     }, extra: unknown) => {
       try {
         // Determine which services to use
@@ -70,11 +72,12 @@ export function registerTraceMetadataTools(server: McpServer, esAdapter: Elastic
           serviceFilter = args.service;
         }
         
-        // Get top errors
-        const top = await esAdapter.topErrors(args.startTime, args.endTime, args.N, serviceFilter);
+        // Get top errors with optional search pattern
+        const top = await esAdapter.topErrors(args.startTime, args.endTime, args.N, serviceFilter, args.search);
         
         if (!top.length) {
-          return { content: [{ type: 'text', text: 'No errors found.' }] } as MCPToolOutput;
+          const searchInfo = args.search ? ` matching pattern "${args.search}"` : '';
+          return { content: [{ type: 'text', text: `No errors found${searchInfo}.` }] } as MCPToolOutput;
         }
         
         // Enhance with trace information where available
