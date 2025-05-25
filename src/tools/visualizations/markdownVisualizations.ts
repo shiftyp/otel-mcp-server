@@ -13,6 +13,7 @@ import { ServiceDependencyGraphTool } from './serviceDependencyGraph.js';
 import { SpanGanttChartTool } from './spanGanttChart.js';
 import { IncidentGraphTool } from './incidentGraph.js';
 import { FieldDistributionPieChartTool } from './fieldDistributionPieChart.js';
+import { XYChartTool } from './xyChart.js';
 import { IncidentTimelineTool } from './incidentTimeline.js';
 
 // Define interfaces for tool responses
@@ -36,6 +37,7 @@ export class MarkdownVisualizationsTool {
   private spanGanttChartTool: SpanGanttChartTool;
   private incidentGraphTool: IncidentGraphTool;
   private fieldDistributionPieChartTool: FieldDistributionPieChartTool;
+  private xyChartTool: XYChartTool;
   private incidentTimelineTool: IncidentTimelineTool;
 
   constructor(esAdapter: ElasticsearchAdapter) {
@@ -47,6 +49,7 @@ export class MarkdownVisualizationsTool {
     this.spanGanttChartTool = new SpanGanttChartTool(esAdapter);
     this.incidentGraphTool = new IncidentGraphTool(esAdapter);
     this.fieldDistributionPieChartTool = new FieldDistributionPieChartTool(esAdapter);
+    this.xyChartTool = new XYChartTool(esAdapter);
     this.incidentTimelineTool = new IncidentTimelineTool(esAdapter);
   }
 
@@ -131,6 +134,30 @@ export class MarkdownVisualizationsTool {
               dataType: z.enum(['logs', 'traces', 'metrics']).describe('Type of OTEL data to analyze'),
               showData: z.boolean().optional().describe('Whether to show data values in the chart'),
               maxSlices: z.number().optional().describe('Maximum number of slices to show (default: 10)'),
+              query: z.string().optional().describe('Optional query to filter the data (e.g. "service:frontend")')
+            }),
+
+            // XY Chart Configuration
+            z.object({
+              type: z.literal('xy-chart').describe('XY Chart - Flexible chart for visualizing data with two dimensions'),
+              chartType: z.enum(['bar', 'line', 'scatter']).describe('Type of chart to generate'),
+              xField: z.string().describe('Field to use for X-axis values or categories'),
+              yField: z.string().describe('Field to use for Y-axis values'),
+              dataType: z.enum(['logs', 'traces', 'metrics']).describe('Type of OTEL data to analyze'),
+              title: z.string().optional().describe('Optional chart title'),
+              xAxisTitle: z.string().optional().describe('Optional X-axis title'),
+              yAxisTitle: z.string().optional().describe('Optional Y-axis title'),
+              showValues: z.boolean().optional().describe('Whether to show data values on the chart'),
+              maxItems: z.number().optional().describe('Maximum number of data points to show (default: 10)'),
+              sortBy: z.enum(['x', 'y']).optional().describe('Sort by X or Y values (default: y)'),
+              sortDirection: z.enum(['asc', 'desc']).optional().describe('Sort direction (default: desc)'),
+              multiSeries: z.boolean().optional().describe('Whether to generate multiple series based on a grouping field'),
+              seriesField: z.string().optional().describe('Field to use for grouping data into multiple series'),
+              maxSeries: z.number().optional().describe('Maximum number of series to show (default: 5)'),
+              aggregation: z.enum(['count', 'sum', 'avg', 'min', 'max']).optional().describe('Aggregation method for Y values (default: count)'),
+              yMin: z.number().optional().describe('Minimum value for Y-axis'),
+              yMax: z.number().optional().describe('Maximum value for Y-axis'),
+              timeInterval: z.string().optional().describe('Time interval for time-based charts (e.g., "1h", "1d")'),
               query: z.string().optional().describe('Optional query to filter the data (e.g. "service:frontend")')
             }),
             
@@ -296,6 +323,59 @@ export class MarkdownVisualizationsTool {
           } catch (error) {
             logger.error('[MarkdownVisualizationsTool] Error generating field distribution pie chart', { error });
             return `### Error Generating Field Distribution Pie Chart\n\nUnable to generate the field distribution visualization: ${error instanceof Error ? error.message : String(error)}`;
+          }
+        }
+        
+        case 'xy-chart': {
+          // Use the XYChartTool
+          const chartType = config.chartType || 'bar';
+          const xField = config.xField || '@timestamp';
+          const yField = config.yField || 'metric.value';
+          const dataType = config.dataType || 'logs';
+          const title = config.title;
+          const xAxisTitle = config.xAxisTitle;
+          const yAxisTitle = config.yAxisTitle;
+          const showValues = config.showValues || false;
+          const maxItems = config.maxItems || 10;
+          const sortBy = config.sortBy || 'y';
+          const sortDirection = config.sortDirection || 'desc';
+          const multiSeries = config.multiSeries || false;
+          const seriesField = config.seriesField;
+          const maxSeries = config.maxSeries || 5;
+          const aggregation = config.aggregation || 'count';
+          const yMin = config.yMin;
+          const yMax = config.yMax;
+          const timeInterval = config.timeInterval;
+          const query = config.query;
+          
+          try {
+            const result = await this.xyChartTool.generateXYChart(
+              timeRange.start,
+              timeRange.end,
+              chartType,
+              xField,
+              yField,
+              dataType,
+              query,
+              title,
+              xAxisTitle,
+              yAxisTitle,
+              showValues,
+              maxItems,
+              sortBy,
+              sortDirection,
+              multiSeries,
+              seriesField,
+              maxSeries,
+              aggregation,
+              yMin,
+              yMax,
+              timeInterval
+            );
+            return '```mermaid\n' + result + '\n```';
+          } catch (error) {
+            logger.error('[MarkdownVisualizationsTool] Error generating XY chart', { error });
+            return `### Error Generating XY Chart\n\nUnable to generate the XY chart visualization: ${error instanceof Error ? error.message : String(error)}`;
           }
         }
         
