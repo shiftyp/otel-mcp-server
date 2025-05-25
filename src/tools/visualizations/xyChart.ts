@@ -4,6 +4,7 @@ import type { MCPToolOutput } from '../../types.js';
 import type { McpServer } from '@modelcontextprotocol/sdk/server/mcp.js';
 import { ElasticsearchAdapter } from '../../adapters/elasticsearch/index.js';
 import { registerMcpTool } from '../../utils/registerTool.js';
+import { escapeMermaidString, escapeMermaidAxisLabels } from '../../utils/mermaidEscaper.js';
 
 /**
  * Tool for generating XY charts (bar, line, scatter)
@@ -500,17 +501,17 @@ export class XYChartTool {
   
     mermaidLines.push('xychart-beta');
     
-    // Add title
+    // Add title with escaped special characters
     const chartTitle = title || `${chartType.charAt(0).toUpperCase() + chartType.slice(1)} Chart of ${xField} vs ${yField}`;
-    mermaidLines.push(`    title "${chartTitle}"`);
+    mermaidLines.push(`    title "${escapeMermaidString(chartTitle)}"`);
     
-    // Add x-axis
+    // Add x-axis with escaped labels
     const xAxis = xAxisTitle || xField;
-    mermaidLines.push(`    x-axis "${xAxis}" [${xLabels.join(',')}]`);
+    mermaidLines.push(`    x-axis "${escapeMermaidString(xAxis)}" [${escapeMermaidAxisLabels(xLabels)}]`);
     
-    // Add y-axis
+    // Add y-axis with escaped label
     const yAxis = yAxisTitle || yField;
-    mermaidLines.push(`    y-axis "${yAxis}" ${finalYMin} --> ${finalYMax}`);
+    mermaidLines.push(`    y-axis "${escapeMermaidString(yAxis)}" ${finalYMin} --> ${finalYMax}`);
     
     // Add data series
     const seriesNames = Object.keys(yValues);

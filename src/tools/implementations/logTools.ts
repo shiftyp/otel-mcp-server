@@ -15,6 +15,173 @@ export function registerLogTools(server: McpServer, esAdapter: ElasticsearchAdap
   const logAnomalyDetectionTool = new LogAnomalyDetectionTool(esAdapter);
   
   // Note: Incident graph visualization has been moved to the consolidated MarkdownVisualizationsTool
+  
+  // Logs table visualization
+  registerMcpTool(
+    server,
+    'logsTable',
+    { 
+      pattern: z.string().optional().describe('Text to search within log messages and fields'),
+      service: z.string().optional().describe('Filter to logs from a specific service'),
+      services: z.array(z.string()).optional().describe('Filter to logs from multiple services (overrides service parameter)'),
+      level: z.string().optional().describe('Filter by log severity (e.g., "error", "info", "warn")'),
+      timeRange: z.object({
+        start: z.string().describe('Start time in ISO 8601 format or Elasticsearch date math (e.g., "now-24h")'),
+        end: z.string().describe('End time in ISO 8601 format or Elasticsearch date math (e.g., "now")')
+      }).optional().describe('Time window for log search'),
+      fields: z.array(z.string()).optional().describe('Additional fields to include in the table'),
+      maxRows: z.number().optional().default(20).describe('Maximum number of rows to display (default: 20)'),
+      includeTraceLinks: z.boolean().optional().default(true).describe('Include links to traces when available (default: true)')
+    },
+    async (args: { 
+      pattern?: string, 
+      service?: string, 
+      services?: string[], 
+      level?: string, 
+      timeRange?: { start: string, end: string },
+      fields?: string[],
+      maxRows?: number,
+      includeTraceLinks?: boolean
+    }, extra: unknown) => {
+      // Determine which services to use
+      let serviceFilter: string | string[] | undefined = undefined;
+      if (args.services && args.services.length > 0) {
+        serviceFilter = args.services;
+      } else if (args.service) {
+        serviceFilter = args.service;
+      }
+      
+      // Extract time range if provided
+      const startTime = args.timeRange?.start;
+      const endTime = args.timeRange?.end;
+      
+      // Search OTEL logs in Elasticsearch for the given pattern
+      logger.info('[MCP TOOL] logsTable calling searchOtelLogs', { 
+        pattern: args.pattern, 
+        service: args.service,
+        services: args.services,
+        level: args.level,
+        startTime,
+        endTime,
+        fields: args.fields
+      });
+      
+      try {
+        const logs = await esAdapter.searchOtelLogs(args.pattern || '', serviceFilter, args.level, startTime, endTime);
+        
+        if (!logs.length) {
+          const levelInfo = args.level ? ` with level "${args.level}"` : '';
+          const patternInfo = args.pattern ? ` matching "${args.pattern}"` : '';
+          return { content: [{ type: 'text', text: `No logs found${patternInfo}${levelInfo}.` }] } as MCPToolOutput;
+        }
+        
+        // Limit the number of logs to display
+        const maxRows = args.maxRows || 20;
+        const limitedLogs = logs.slice(0, maxRows);
+        
+        // Define default fields to display
+        const defaultFields = ['timestamp', 'service', 'level', 'message'];
+        
+        // Add additional fields if specified
+        const fieldsToDisplay = [...defaultFields];
+        if (args.includeTraceLinks !== false) {
+          fieldsToDisplay.push('trace_id');
+        }
+        if (args.fields && args.fields.length > 0) {
+          // Add additional fields, avoiding duplicates
+          args.fields.forEach(field => {
+            if (!fieldsToDisplay.includes(field)) {
+              fieldsToDisplay.push(field);
+            }
+          });
+        }
+        
+        // Generate markdown table header
+        let table = '| ' + fieldsToDisplay.join(' | ') + ' |\n';
+        table += '| ' + fieldsToDisplay.map(() => '---').join(' | ') + ' |\n';
+        
+        // Generate table rows
+        for (const log of limitedLogs) {
+          const row: string[] = [];
+          
+          for (const field of fieldsToDisplay) {
+            if (field === 'timestamp') {
+              // Format timestamp for better readability
+              const timestamp = log.timestamp ? new Date(log.timestamp).toISOString().replace('T', ' ').substring(0, 19) : '';
+              row.push(timestamp);
+            } else if (field === 'trace_id' && args.includeTraceLinks !== false) {
+              // Add trace link if available
+              if (log.trace_id) {
+                row.push(`[${log.trace_id.substring(0, 8)}...](trace:${log.trace_id})`);
+              } else {
+                row.push('-');
+              }
+            } else if (field === 'message') {
+              // Truncate message if too long and escape pipe characters
+              const message = log.message || '';
+              const truncated = message.length > 100 ? message.substring(0, 97) + '...' : message;
+              row.push(truncated.replace(/\|/g, '\\|'));
+            } else if (field === 'attributes' && log.attributes) {
+              // Format attributes as a compact JSON string
+              row.push(JSON.stringify(log.attributes).substring(0, 100).replace(/\|/g, '\\|'));
+            } else {
+              // Handle any other field, including custom fields from attributes
+              let value = log[field as keyof typeof log];
+              
+              // If the field is not directly on the log object, check attributes
+              if (value === undefined && log.attributes && typeof log.attributes === 'object') {
+                value = log.attributes[field];
+              }
+              
+              // Format the value for display
+              if (value === undefined || value === null) {
+                row.push('-');
+              } else if (typeof value === 'object') {
+                row.push(JSON.stringify(value).substring(0, 50).replace(/\|/g, '\\|'));
+              } else {
+                row.push(String(value).replace(/\|/g, '\\|'));
+              }
+            }
+          }
+          
+          table += '| ' + row.join(' | ') + ' |\n';
+        }
+        
+        // Add a note if results were limited
+        if (logs.length > maxRows) {
+          table += `\n*Showing ${maxRows} of ${logs.length} logs. Use maxRows parameter to adjust.*`;
+        }
+        
+        const output: MCPToolOutput = { 
+          content: [{ 
+            type: 'text', 
+            text: table
+          }] 
+        };
+        
+        logger.info('[MCP TOOL] logsTable result', { 
+          pattern: args.pattern, 
+          service: args.service,
+          services: args.services,
+          logCount: logs.length,
+          displayedCount: limitedLogs.length
+        });
+        
+        return output;
+      } catch (error) {
+        logger.error('[MCP TOOL] logsTable error', { 
+          error: error instanceof Error ? error.message : String(error) 
+        });
+        
+        return { 
+          content: [{ 
+            type: 'text', 
+            text: `Error generating logs table: ${error instanceof Error ? error.message : String(error)}` 
+          }] 
+        };
+      }
+    }
+  );
 
   // Logs search
   registerMcpTool(

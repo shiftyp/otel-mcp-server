@@ -1,6 +1,7 @@
 import { logger } from '../../utils/logger.js';
 import type { MCPToolOutput } from '../../types.js';
 import { ElasticsearchAdapter } from '../../adapters/elasticsearch/index.js';
+import { escapeMermaidString } from '../../utils/mermaidEscaper.js';
 
 /**
  * Tool for generating a timeline of events during an incident.
@@ -810,21 +811,26 @@ export class IncidentTimelineTool {
             color = ' : warning';
           }
           
-          // Add icon based on source
+          // Add icon based on source using emojis with proper escaping
           let icon = '';
           if (event.source === 'metric') {
-            icon = '📊 ';
+            icon = '📊 '; // Chart emoji
           } else if (event.correlatedTraceId) {
-            icon = '🔄 ';
+            icon = '🔄 '; // Refresh emoji
           } else if (event.level.toUpperCase().includes('ERROR')) {
-            icon = '❌ ';
+            icon = '❌ '; // Cross mark emoji
           } else {
-            icon = '⚠️ ';
+            icon = '⚠️ '; // Warning emoji
           }
           
-          // Add the event to the timeline with proper escaping for Mermaid
-          // Replace internal colons with #58; for Mermaid compatibility
-          const escapedMessage = event.message.replace(/:/g, '#58;').replace(/\n/g, ' ');
+          // Use the escapeMermaidString utility to handle special characters and emojis
+          let escapedMessage = escapeMermaidString(event.message);
+          
+          // Limit message length to avoid overwhelming the diagram
+          if (escapedMessage.length > 100) {
+            escapedMessage = escapedMessage.substring(0, 97) + '...';
+          }
+          
           mermaidDiagram += `        ${formattedTime} : ${icon}${escapedMessage}${color}\n`;
         });
       });
