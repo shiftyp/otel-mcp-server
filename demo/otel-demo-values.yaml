@@ -14,19 +14,13 @@ opentelemetry-collector:
     exporters:
       debug: {}
       elasticsearch:
-        endpoint: http://elasticsearch-nginx-proxy:80
-        # Configure timeout settings
+        endpoint: http://elasticsearch-master:9200
         timeout: 90s
-        # Add mapping settings to handle nested objects
+        num_workers: 4
         mapping:
-          mode: "dynamic"
-          dedot: true
-        # Configure retry settings
-        retry_on_failure:
-          enabled: true
-          initial_interval: 5s
-          max_interval: 30s
-          max_elapsed_time: 300s
+          mode: otel
+        headers:
+          X-Elastic-Mapping-Mode: otel
       opensearch:
         http:
           endpoint: http://opensearch:9200
@@ -46,6 +40,30 @@ opentelemetry-collector:
         endpoint: ${env:MY_POD_IP}:13133
     processors:
       batch: {}
+      filter/metrics:
+        metrics:
+          exclude:
+            match_type: regexp
+            metric_names:
+              - http\.server\.duration
+              - http\.server\.response\.size
+              - jvm\.gc\.duration
+              - http\.client\.duration
+              - process\.runtime\.go\.gc\.pause_ns
+              - rpc\.client\.duration
+              - rpc\.client\.request\.size
+              - rpc\.client\.response\.size
+              - rpc\.client\.requests_per_rpc
+              - rpc\.client\.responses_per_rpc
+              - rpc\.server\.duration
+              - rpc\.server\.request\.size
+              - rpc\.server\.response\.size
+              - rpc\.server\.requests_per_rpc
+              - rpc\.server\.responses_per_rpc
+              - http\.client\.request\.duration
+              - http\.client\.connection\.duration
+              - http\.client\.request\.time_in_queue
+              - dns\.lookup\.duration
       k8sattributes:
         extract:
           metadata:
@@ -78,6 +96,15 @@ opentelemetry-collector:
         - action: insert
           from_attribute: k8s.pod.uid
           key: service.instance.id
+      transform:
+        error_mode: ignore
+        metric_statements:
+        - context: resource
+          statements:
+          # Handle process.executable field mapping issues
+          - set(resource.attributes["process.executable.renamed"], resource.attributes["process.executable"]) where resource.attributes["process.executable"] != nil
+          - delete_key(resource.attributes, "process.executable") where resource.attributes["process.executable"] != nil
+        # Let's remove the problematic histogram handling for now
     receivers:
       httpcheck/frontend-proxy:
         targets:
@@ -154,6 +181,7 @@ opentelemetry-collector:
           - debug
           - elasticsearch
           processors:
+          - filter/metrics
           - k8sattributes
           - memory_limiter
           - resource
@@ -184,12 +212,4 @@ opentelemetry-collector:
       telemetry:
         metrics:
           address: ${env:MY_POD_IP}:8888
-          level: detailed
-          readers:
-          - periodic:
-              exporter:
-                otlp:
-                  endpoint: otel-collector:4318
-                  protocol: grpc
-              interval: 10000
-              timeout: 5000
+          level: none
