@@ -769,25 +769,45 @@ mcp0_extractIncidentGraph({
 })
 ```
 
-### Example: Analyze a Trace
+### Example: Query a Specific Trace
 
 Request:
 ```json
 {
-  "tool": "analyzeTrace",
-  "params": { "traceId": "<your-trace-id>" }
+  "tool": "tracesQuery",
+  "params": {
+    "query": {
+      "query": {
+        "term": {
+          "trace.id": "<your-trace-id>"
+        }
+      },
+      "size": 100
+    }
+  }
 }
 ```
 
 Response:
 ```json
 {
-  "content": [
-    {
-      "type": "text",
-      "text": "{\n  \"traceId\": \"...\",\n  \"spanCount\": 12,\n  ...\n}"
-    }
-  ]
+  "hits": {
+    "total": { "value": 12 },
+    "hits": [
+      {
+        "_source": {
+          "trace.id": "<your-trace-id>",
+          "span.id": "...",
+          "service.name": "...",
+          "span.name": "...",
+          "span.kind": "...",
+          "span.duration": 123456,
+          "span.status.code": "OK"
+        }
+      },
+      // ... more spans
+    ]
+  }
 }
 ```
 
@@ -851,6 +871,23 @@ If you encounter connection issues, check the logs for SSL or authentication err
 - If containerizing, run it as a foreground process and connect its stdio to your orchestrator.
 - Do **not** deploy as a background service or expose as an HTTP endpoint (unless you have added a transport for that purpose).
 
+### Error Handling
+
+The server implements structured error handling for all tools. If a tool encounters an error, it will return a response with the following structure:
+
+```json
+{
+  "error": true,
+  "type": "ErrorType",
+  "message": "Detailed error message",
+  "params": {
+    // Original parameters that caused the error
+  }
+}
+```
+
+This makes it easier to debug issues and provide meaningful feedback to users.
+
 ### Kubernetes (Helm or kubectl)
 1. **Deploy the OTEL Demo:**
    - Follow the [OpenTelemetry Demo](https://github.com/open-telemetry/opentelemetry-demo) instructions for Kubernetes.
@@ -893,7 +930,7 @@ If you encounter connection issues, check the logs for SSL or authentication err
 1. Query for traces:
    ```json
    {
-     "tool": "queryTraces",
+     "tool": "tracesQuery",
      "params": {
        "query": {
          "query": {
@@ -913,7 +950,7 @@ If you encounter connection issues, check the logs for SSL or authentication err
 2. Search for trace fields:
    ```json
    {
-     "tool": "searchForTraceFields",
+     "tool": "traceFieldsGet",
      "params": {
        "search": "duration"
      }
@@ -923,7 +960,7 @@ If you encounter connection issues, check the logs for SSL or authentication err
 3. Search for log fields:
    ```json
    {
-     "tool": "searchForLogFields",
+     "tool": "logFieldsGet",
      "params": {
        "search": "message"
      }
