@@ -486,51 +486,135 @@ This ensures that you only see tools that will work with your available data. If
 
 ## 🧪 Testing with the OTEL Demo
 
-You can test OTEL MCP Server with the official [OpenTelemetry Demo](https://github.com/open-telemetry/opentelemetry-demo) to ingest and query real traces, metrics, and logs.
+The OTEL MCP Server has been extensively tested with the official [OpenTelemetry Demo](https://github.com/open-telemetry/opentelemetry-demo) application, which provides a realistic microservices environment with complete telemetry data.
 
-### Steps:
-1. **Deploy the OTEL Demo** (e.g., via Docker Compose or Kubernetes)
-2. **Ensure Elasticsearch security is disabled** in your OTEL demo deployment
-3. **Configure your `.env`** for OTEL MCP Server:
-   ```env
-   ELASTICSEARCH_URL=http://localhost:9200
-   # No authentication needed with security disabled
-   SERVER_NAME=otel-mcp-server
-   LOGLEVEL=info
+### Kubernetes Setup
+
+1. **Deploy the OpenTelemetry Demo** using Helm:
+   ```bash
+   # Add the OpenTelemetry Helm repository
+   helm repo add open-telemetry https://open-telemetry.github.io/opentelemetry-helm-charts
+   helm repo update
+   
+   # Create namespace for the demo
+   kubectl create namespace opentelemetry-demo
+   
+   # Install the OpenTelemetry Demo using Helm
+   helm install opentelemetry-demo open-telemetry/opentelemetry-demo \
+     -n opentelemetry-demo \
+     --values demo/otel-demo-values.yaml
    ```
-4. **Run OTEL MCP Server** and connect your MCP client (e.g., Windsurf)
 
-### ⚠️ Elasticsearch Configuration and Compatibility
+2. **Configure the OTEL Collector** using the provided values file:
+   ```bash
+   # The demo/otel-demo-values.yaml file already contains the necessary configuration:
+   # - Elasticsearch exporter with OTEL mapping mode
+   # - Proper pipeline configuration for traces, metrics, and logs
+   # - Kubernetes attribute processors
+   
+   # If you need to update the Elasticsearch endpoint, modify the values file:
+   sed -i 's|endpoint: http://elasticsearch-master:9200|endpoint: http://elasticsearch.elastic.svc.cluster.local:9200|g' demo/otel-demo-values.yaml
+   
+   # Update the OpenTelemetry Demo with the modified values
+   helm upgrade opentelemetry-demo open-telemetry/opentelemetry-demo \
+     -n opentelemetry-demo \
+     --values demo/otel-demo-values.yaml
+   ```
+   
+   The provided values file includes comprehensive configuration for the OpenTelemetry Collector, including:
+   - Elasticsearch exporter with OTEL mapping mode
+   - Kubernetes attributes extraction
+   - Resource processors
+   - Memory limiters and batch processors
+   - Proper service pipelines for all telemetry types
 
-#### **Security Configuration:**
-For development and testing purposes, we've disabled SSL and security in Elasticsearch to simplify connectivity:
+3. **Deploy Elasticsearch** using the provided manifests:
+   ```bash
+   # Create namespace for Elasticsearch
+   kubectl create namespace elastic
+   
+   # Apply the Elasticsearch manifests
+   kubectl apply -f demo/elasticsearch-manifests/elasticsearch-service.yaml
+   kubectl apply -f demo/elasticsearch-manifests/elasticsearch-statefulset.yaml
+   kubectl apply -f demo/elasticsearch-manifests/elasticsearch-templates-configmap.yaml
+   kubectl apply -f demo/elasticsearch-manifests/elasticsearch-setup-job.yaml
+   
+   # For a complete setup with security (optional)
+   # kubectl apply -f demo/elasticsearch-manifests/elasticsearch-certs.yaml
+   # kubectl apply -f demo/elasticsearch-manifests/elasticsearch-credentials.yaml
+   ```
+   
+   These manifests provide a production-ready Elasticsearch setup with:
+   - Properly configured StatefulSet for data persistence
+   - Kubernetes Services for access
+   - Index templates optimized for OpenTelemetry data
+   - Optional security configuration
 
-- We've configured Elasticsearch with security features disabled
-- This allows direct HTTP connections without SSL/TLS verification issues
-- No need for proxies or complex authentication in development environments
+4. **Connect with OTEL MCP Server**:
+   ```bash
+   # Port-forward Elasticsearch service to your local machine
+   kubectl port-forward -n elastic svc/elasticsearch 9200:9200 &
+   
+   # Run OTEL MCP Server with the forwarded Elasticsearch URL
+   ELASTICSEARCH_URL=http://localhost:9200 npx -y otel-mcp-server
+   ```
 
-#### **Version Compatibility:**
-There are important version compatibility considerations to be aware of:
+   Or use the configuration for your LLM tool at the start of this readme.
+   
+5. **Verify the connection** by checking available services:
+   ```javascript
+   // Using the MCP Inspector or Windsurf, run:
+   mcp0_servicesGet({})
+   ```
+   
+   You should see the OpenTelemetry Demo services listed in the response, confirming that the OTEL MCP Server is successfully connected to Elasticsearch and retrieving telemetry data.
 
-- **Elasticsearch Version**: This tool is tested with Elasticsearch 8.x. Earlier or later versions may have different index patterns or field mappings.
+4. **Connect your MCP client** (e.g., Windsurf) to start querying the data
 
-- **OpenTelemetry Schema**: The OTEL MCP Server expects the OpenTelemetry schema used in the OTEL Demo. Different schema versions may have different field names or data structures.
+### Elasticsearch Compatibility
 
-- **Index Patterns**: The server looks for indices with patterns like `.ds-traces-*`, `.ds-metrics-*`, and `.ds-logs-*`. Custom index patterns will require code modifications.
+- **Version Support**: Tested with Elasticsearch 8.x (8.12+ recommended for OTEL mapping mode)
+- **Index Patterns**: The server looks for `.ds-traces-*`, `.ds-metrics-*`, and `.ds-logs-*` indices
+- **Mapping Modes**: Supports both OTEL native mapping (recommended) and ECS mapping
 
-#### **Configuration:**
-- Set `ELASTICSEARCH_URL` to the direct HTTP endpoint of your Elasticsearch instance
-- For the OTEL demo, this is typically `http://localhost:9200` or the appropriate service endpoint
-- No authentication credentials are required with security disabled
+### Example Queries for OTEL Demo
 
-```env
-ELASTICSEARCH_URL=http://localhost:9200
-# No username/password needed with security disabled
+Once you have the demo running, try these queries to explore the data:
+
+```javascript
+// List all services in the demo
+mcp0_servicesGet({})
+
+// Find checkout service traces with errors
+mcp0_tracesQuery({
+  "query": {
+    "query": {
+      "bool": {
+        "must": [
+          { "term": { "Resource.service.name": "checkout" } },
+          { "term": { "status.code": "ERROR" } }
+        ]
+      }
+    }
+  }
+})
+
+// Get CPU usage metrics for the frontend service
+mcp0_metricsQuery({
+  "query": {
+    "query": {
+      "bool": {
+        "must": [
+          { "term": { "Resource.service.name": "frontend" } },
+          { "term": { "metric.name": "system.cpu.usage" } }
+        ]
+      }
+    }
+  }
+})
 ```
 
-**Note:** For production environments, you should enable Elasticsearch security features and implement proper authentication and encryption. The current setup is optimized for development ease of use.
-
-If you encounter connection issues or missing data, check the logs for error details. Issues may be related to Elasticsearch security configuration, version incompatibility, or differences in the OpenTelemetry schema.
+**Note:** For production environments, enable Elasticsearch security features with proper authentication and encryption.
 
 ## 🚢 Deployment & Orchestration Notes
 
