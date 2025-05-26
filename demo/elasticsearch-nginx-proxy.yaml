@@ -10,7 +10,7 @@ data:
       location / {
           proxy_pass https://elasticsearch-master:9200;
           proxy_ssl_verify off;
-          # Base64 encoded elastic:changeme (default Elastic password, change for production!)
+          # Base64 encoded elastic:changeme (default Elastic password)
           proxy_set_header Authorization "Basic ZWxhc3RpYzpjaGFuZ2VtZQ==";
           proxy_set_header Host $host;
           proxy_set_header X-Real-IP $remote_addr;
@@ -47,7 +47,7 @@ spec:
       volumes:
       - name: nginx-config
         configMap:
-          name: elasticsearch-nginx-proxy-conf # Uses elastic:changeme (default); change for production!ig
+          name: elasticsearch-nginx-proxy-config # Uses elastic:changeme (default); change for production!ig
 ---
 apiVersion: v1
 kind: Service

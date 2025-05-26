@@ -85,9 +85,14 @@ export class IncidentTimelineTool {
             should: services.map(service => ({
               bool: {
                 should: [
+                  // Match service name fields with exact term
                   { term: { 'Resource.service.name': service } },
                   { term: { 'resource.attributes.service.name': service } },
-                  { term: { 'service.name': service } }
+                  { term: { 'service.name': service } },
+                  
+                  // Also match Kubernetes deployment name fields with exact term
+                  { term: { 'kubernetes.deployment.name': service } },
+                  { term: { 'k8s.deployment.name': service } }
                 ]
               }
             })),

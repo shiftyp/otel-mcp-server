@@ -45,12 +45,19 @@ export class IncidentGraphTool {
       // Use the topErrors functionality to get the top errors
       const limit = 100; // Get a large number of errors to build a comprehensive graph
       
+      // Prepare service filter - if provided, ensure it's properly formatted for fuzzy matching
+      let serviceFilter = service;
+      if (serviceFilter && typeof serviceFilter === 'string') {
+        // No need to modify here as the adapter will handle the fuzzy matching
+        // The topErrors method will use the consistent wildcard pattern internally
+      }
+      
       // Query the errors index using the adapter with proper parameters
       const errorResponse = await this.esAdapter.topErrors(
         startTime,  // Start time as string
         endTime,    // End time as string
         limit,      // Number of errors to return
-        service,    // Optional service filter
+        serviceFilter,    // Optional service filter with fuzzy matching
         query       // Optional query pattern
       );
       

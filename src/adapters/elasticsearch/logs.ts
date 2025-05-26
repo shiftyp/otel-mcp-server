@@ -97,13 +97,26 @@ export class LogsAdapter extends ElasticsearchCore {
           query.bool.filter = [];
         }
         
+        // For multiple services, create an array of term queries for exact matching
+        const serviceTerms = [];
+        for (const service of services) {
+          // Add term queries for standard OpenTelemetry service name fields
+          serviceTerms.push({ term: { 'resource.service.name': service } });
+          serviceTerms.push({ term: { 'Resource.service.name': service } });
+          serviceTerms.push({ term: { 'service.name': service } });
+          serviceTerms.push({ term: { 'kubernetes.deployment.name': service } });
+          serviceTerms.push({ term: { 'k8s.deployment.name': service } });
+          
+          // Add term queries for Kubernetes event fields that might contain service names
+          serviceTerms.push({ term: { 'Body.object.regarding.name': service } });
+          serviceTerms.push({ term: { 'Body.object.metadata.name': service } });
+          serviceTerms.push({ term: { 'Body.object.regarding.kind': service } });
+          serviceTerms.push({ term: { 'Body.object.involvedObject.name': service } });
+        }
+        
         query.bool.filter.push({
           bool: {
-            should: [
-              { terms: { 'resource.service.name': services } },
-              { terms: { 'Resource.service.name': services } },
-              { terms: { 'service.name': services } }
-            ],
+            should: serviceTerms,
             minimum_should_match: 1
           }
         });
@@ -135,12 +148,28 @@ export class LogsAdapter extends ElasticsearchCore {
           new Date().toISOString();
         
         // Extract service name from various possible fields
-        const service = 
+        let service = 
           source['service']?.name || 
           source['resource']?.['service.name'] || 
           source['Resource']?.['service.name'] || 
-          source['Resource']?.service?.name || 
-          'unknown';
+          source['Resource']?.service?.name;
+          
+        // For Kubernetes events, try to extract service name from object fields
+        if (!service && source['Body.object.regarding.name']) {
+          // Extract service name from pod name (e.g., "frontend-758f7b8695-2r6hv" → "frontend")
+          const podName = source['Body.object.regarding.name'];
+          const match = podName.match(/^([a-z0-9-]+)-[a-z0-9]{9,10}-[a-z0-9]{5}$/);
+          if (match) {
+            service = match[1]; // First capture group is the service name
+          } else {
+            service = podName.split('-')[0]; // Fallback to first part of name
+          }
+        }
+        
+        // Default to unknown if no service name could be extracted
+        if (!service) {
+          service = 'unknown';
+        }
         
         // Extract log level from various possible fields
         const level = 

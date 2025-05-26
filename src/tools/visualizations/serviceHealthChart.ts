@@ -155,11 +155,13 @@ export class ServiceHealthChartTool {
         services.map(async (service) => {
           try {
             // Use the aggregateOtelMetricsRange method to get metrics for this service
+            // The service name is passed directly to the adapter method
+            // which will handle the fuzzy matching consistently with other tools
             const metricsResults = await this.esAdapter.aggregateOtelMetricsRange(
               startTime,
               endTime,
               metricField,
-              service
+              service // Service name - adapter will handle fuzzy matching
             );
             
             // Parse the JSON strings returned by the adapter

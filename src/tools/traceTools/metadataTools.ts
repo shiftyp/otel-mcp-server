@@ -17,7 +17,7 @@ export function registerTraceMetadataTools(server: McpServer, esAdapter: Elastic
   registerMcpTool(
     server,
     'servicesGet',
-    { search: z.string().optional().describe('Filter services by name pattern') },
+    { search: z.string().describe('Filter services by name pattern. Pass an empty string to get all services') },
     async (args: { search?: string } = {}) => {
       if (!args || typeof args !== 'object') args = {};
       logger.info('[MCP TOOL] services tool called with args', { args });

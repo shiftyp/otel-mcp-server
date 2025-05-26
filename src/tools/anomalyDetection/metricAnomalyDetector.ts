@@ -199,12 +199,17 @@ export class MetricAnomalyDetector {
           // Handle array of services
           const serviceTerms: any[] = [];
           
-          // For each service, create terms for all possible field names
+          // For each service, create term queries for all possible field names including Kubernetes deployment
           serviceOrServices.forEach(service => {
             if (service && service.trim() !== '') {
+              // Match service name fields with exact term
               serviceTerms.push({ term: { 'Resource.service.name': service } });
               serviceTerms.push({ term: { 'resource.attributes.service.name': service } });
               serviceTerms.push({ term: { 'service.name': service } });
+              
+              // Also match Kubernetes deployment name fields with exact term
+              serviceTerms.push({ term: { 'kubernetes.deployment.name': service } });
+              serviceTerms.push({ term: { 'k8s.deployment.name': service } });
             }
           });
           
@@ -222,9 +227,14 @@ export class MetricAnomalyDetector {
           must.push({
             bool: {
               should: [
+                // Match service name fields with exact term
                 { term: { 'Resource.service.name': service } },
                 { term: { 'resource.attributes.service.name': service } },
-                { term: { 'service.name': service } }
+                { term: { 'service.name': service } },
+                
+                // Also match Kubernetes deployment name fields with exact term
+                { term: { 'kubernetes.deployment.name': service } },
+                { term: { 'k8s.deployment.name': service } }
               ],
               minimum_should_match: 1
             }

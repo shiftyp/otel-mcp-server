@@ -617,8 +617,12 @@ Unable to generate the metrics time series visualization: ${error instanceof Err
           // Determine which services to use
           let serviceFilter: string | string[] | undefined = undefined;
           if (services && services.length > 0) {
+            // For array of services, we'll use the array as is
+            // The underlying adapter methods will handle the wildcard matching
             serviceFilter = services;
           } else if (service) {
+            // For single service, we'll use it directly
+            // The underlying adapter methods will handle the wildcard matching
             serviceFilter = service;
           }
 

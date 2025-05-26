@@ -151,8 +151,12 @@ export class ElasticsearchAdapter extends EventEmitter {
       // Add search filter if provided
       if (search) {
         query.query.bool.must.push({
-          wildcard: {
-            'service.name': `*${search}*`
+          bool: {
+            should: [
+              { term: { 'service.name': search } },
+              { term: { 'kubernetes.deployment.name': search } }
+            ],
+            minimum_should_match: 1
           }
         } as any);
       }
@@ -270,9 +274,11 @@ export class ElasticsearchAdapter extends EventEmitter {
         (query.query.bool as any).must = [{
           bool: {
             should: [
-              { wildcard: { 'service.name': `*${search}*` } } as any,
-              { wildcard: { 'resource.service.name': `*${search}*` } } as any,
-              { wildcard: { 'Resource.service.name': `*${search}*` } } as any
+              { term: { 'service.name': search } } as any,
+              { term: { 'resource.service.name': search } } as any,
+              { term: { 'Resource.service.name': search } } as any,
+              { term: { 'kubernetes.deployment.name': search } } as any,
+              { term: { 'k8s.deployment.name': search } } as any
             ],
             minimum_should_match: 1
           }

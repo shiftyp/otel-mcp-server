@@ -25,7 +25,7 @@ export function registerBasicTools(server: McpServer) {
   registerMcpTool(
     server,
     'listtools',
-    { search: z.string().optional() },
+    { search: z.string().describe('Filter tools by name pattern. Pass an empty string to get all tools') },
     async (args: { search?: string } = {}) => {
       // Get the list of available tools from the registry
       let toolList: string[];
