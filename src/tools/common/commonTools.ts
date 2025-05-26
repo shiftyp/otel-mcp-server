@@ -16,8 +16,13 @@ export function registerCommonTools(server: McpServer, esAdapter: ElasticsearchA
   registerMcpTool(
     server,
     'servicesGet',
-    { search: z.string().optional().describe('Filter services by name pattern. Pass an empty string to get all services') },
-    async (args: { search?: string } = {}) => {
+    { 
+      search: z.string().optional().describe('Filter services by name pattern. Supports wildcards (e.g., "front*", "*end"). Pass an empty string to get all services'),
+      version: z.string().optional().describe('Filter services by version. Supports wildcards (e.g., "2.0.*", "v*"). Only returns services with matching versions'),
+      startTime: z.string().optional().describe('Start time for the time range in ISO format (e.g., "2023-01-01T00:00:00Z")'),
+      endTime: z.string().optional().describe('End time for the time range in ISO format (e.g., "2023-01-02T00:00:00Z")')
+    },
+    async (args: { search?: string, version?: string, startTime?: string, endTime?: string } = {}) => {
       if (!args || typeof args !== 'object') args = {};
       logger.info('[MCP TOOL] servicesGet called', { args });
       
@@ -67,7 +72,7 @@ export function registerCommonTools(server: McpServer, esAdapter: ElasticsearchA
         // Get services from all available telemetry types using the public getServices method
         // The getServices method already collates and dedupes services from all telemetry types
         // But we'll only call it if at least one telemetry type is available
-        const services = await esAdapter.getServices(args.search);
+        const services = await esAdapter.getServices(args.search, args.startTime, args.endTime);
         
         // Convert to map for easier manipulation
         const servicesMap = new Map<string, Set<string>>();
@@ -80,19 +85,51 @@ export function registerCommonTools(server: McpServer, esAdapter: ElasticsearchA
           service.versions.forEach((version: string) => versionSet.add(version));
         });
         
-        logger.info('[MCP TOOL] servicesGet: Retrieved services', { 
-          count: services.length,
-          telemetryUsed: availableTelemetry
-        });
+        // Filter services by version if specified
+        let filteredServices = Array.from(servicesMap.entries());
         
-        // Convert map back to array format
-        const combinedServices = Array.from(servicesMap.entries()).map(([name, versions]) => ({
+        if (args.version && args.version.trim() !== '') {
+          // Check if the version search term contains wildcard characters (* or ?)
+          const hasWildcards = args.version.includes('*') || args.version.includes('?');
+          
+          if (hasWildcards) {
+            // Convert the wildcard pattern to a regular expression
+            const regexPattern = args.version
+              .replace(/\./g, '\\.')
+              .replace(/\*/g, '.*')
+              .replace(/\?/g, '.');
+            const regex = new RegExp(`^${regexPattern}$`, 'i');
+            
+            filteredServices = filteredServices.filter(([_, versions]) => {
+              return Array.from(versions).some(version => regex.test(version));
+            });
+            
+            logger.info('[MCP TOOL] servicesGet filtered services by version with wildcard pattern', { 
+              count: filteredServices.length, 
+              versionPattern: args.version,
+              regexPattern
+            });
+          } else {
+            // Use exact matching for non-wildcard version searches
+            filteredServices = filteredServices.filter(([_, versions]) => {
+              return versions.has(args.version!);
+            });
+            
+            logger.info('[MCP TOOL] servicesGet filtered services by exact version', { 
+              count: filteredServices.length, 
+              version: args.version 
+            });
+          }
+        }
+        
+        // Convert filtered services to array of objects for response
+        const servicesList = filteredServices.map(([name, versions]) => ({
           name,
           versions: Array.from(versions)
         }));
         
         // Sort services by name
-        const sortedServices = combinedServices.sort((a, b) => a.name.localeCompare(b.name));
+        const sortedServices = servicesList.sort((a, b) => a.name.localeCompare(b.name));
         
         // Add metadata about which telemetry types were used
         const result = {

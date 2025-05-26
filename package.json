@@ -1,6 +1,6 @@
 {
   "name": "otel-mcp-server",
-  "version": "0.2.0",
+  "version": "0.2.1",
   "main": "dist/server.js",
   "scripts": {
     "start": "node dist/server.js",

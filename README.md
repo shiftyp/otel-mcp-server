@@ -102,9 +102,29 @@ The OTEL MCP Server automatically detects and adapts to both mapping modes, so y
    npm start
    ```
 
-## 🛠️ Usage
+## ⚙️ Usage
 
 This server exposes MCP tools for use with MCP-compatible clients (such as Windsurf or MCP Inspector). All tools return structured responses and include consistent error handling.
+
+### Adaptive Tool Registration
+
+The OTEL MCP Server dynamically registers tools based on available telemetry types in your Elasticsearch instance:
+
+- If traces, metrics, and logs are all available, all tools will be registered
+- If only certain telemetry types are available (e.g., only traces and logs), only the relevant tools will be registered
+- Common tools like `servicesGet` adapt to use whatever telemetry is available
+
+This means the set of available tools may vary depending on your environment and data availability. The server automatically detects what's available and registers the appropriate tools.
+
+To check which tools are available at runtime, you can use the built-in `listtools` utility:
+
+```javascript
+mcp0_listtools({
+  "search": ""
+})
+```
+
+This will return a list of all registered tools, which will reflect the available telemetry types in your environment.
 
 ### 🔧 Available Tools
 
@@ -123,6 +143,12 @@ This server exposes MCP tools for use with MCP-compatible clients (such as Winds
 ### Service Discovery
 
 - `servicesGet`: List all available services and their versions
+  - Supports wildcard searches for service names (e.g., `front*`, `*end*`)
+  - Supports wildcard searches for service versions (e.g., `v*`, `2.0.*`)
+  - Supports time range filtering with `startTime` and `endTime` parameters
+  - Collates and deduplicates services from traces, metrics, and logs
+  - Automatically adapts to available telemetry types (traces, metrics, logs)
+  - Returns metadata about which telemetry types were used in the response
 
 ### Common Query Parameters
 
@@ -142,6 +168,51 @@ All query tools support the following parameters:
 ## 🔎 Example Queries
 
 Here are some example queries you can use with the OTEL MCP Server tools:
+
+### Service Discovery
+
+```javascript
+// Get all services with names starting with "front"
+mcp0_servicesGet({
+  "search": "front*"
+})
+
+// Example response showing which telemetry types were used:
+// {
+//   "services": [
+//     {
+//       "name": "frontend",
+//       "versions": ["2.0.2"]
+//     },
+//     {
+//       "name": "frontend-proxy",
+//       "versions": ["2.0.2"]
+//     }
+//   ],
+//   "telemetryUsed": {
+//     "traces": true,
+//     "metrics": true,
+//     "logs": true
+//   }
+// }
+
+// Get all services with version 2.0.2
+mcp0_servicesGet({
+  "version": "2.0.2"
+})
+
+// Get all services with names containing "end" and versions starting with "v"
+mcp0_servicesGet({
+  "search": "*end*",
+  "version": "v*"
+})
+
+// Get all services within a specific time range
+mcp0_servicesGet({
+  "startTime": "2025-05-26T15:00:00Z",
+  "endTime": "2025-05-26T16:00:00Z"
+})
+```
 
 ### Trace Queries
 

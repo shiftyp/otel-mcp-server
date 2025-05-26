@@ -53,16 +53,16 @@ export class ElasticsearchAdapter extends EventEmitter {
    * @param search Optional search term to filter services by name
    * @returns Array of service names and their versions
    */
-  public async getServices(search?: string): Promise<Array<{name: string, versions: string[]}>> {
+  public async getServices(search?: string, startTime?: string, endTime?: string): Promise<Array<{name: string, versions: string[]}>> {
     try {
       // Get services from traces
-      const traceServices = await this.tracesAdapter.getServices(search);
+      const traceServices = await this.tracesAdapter.getServices(search, startTime, endTime);
       
       // Get services from metrics
-      const metricServices = await this.getServicesFromMetrics(search);
+      const metricServices = await this.getServicesFromMetrics(search, startTime, endTime);
       
       // Get services from logs
-      const logServices = await this.getServicesFromLogs(search);
+      const logServices = await this.getServicesFromLogs(search, startTime, endTime);
       
       // Combine all services into a single map to deduplicate
       const servicesMap = new Map<string, Set<string>>();
@@ -114,10 +114,12 @@ export class ElasticsearchAdapter extends EventEmitter {
   
   /**
    * Get services from metrics data
-   * @param search Optional search term to filter services by name
+   * @param search Optional search term to filter services by name (supports wildcards)
+   * @param startTime Optional start time for the time range in ISO format
+   * @param endTime Optional end time for the time range in ISO format
    * @returns Array of service names and their versions
    */
-  private async getServicesFromMetrics(search?: string): Promise<Array<{name: string, versions: string[]}>> {
+  private async getServicesFromMetrics(search?: string, startTime?: string, endTime?: string): Promise<Array<{name: string, versions: string[]}>> {
     try {
       // Create a query to find all unique service names in metrics
       const query = {
@@ -148,17 +150,49 @@ export class ElasticsearchAdapter extends EventEmitter {
         }
       };
       
+      // Add time range filter if provided
+      if (startTime || endTime) {
+        const rangeFilter: any = { range: { '@timestamp': {} } };
+        
+        if (startTime) {
+          rangeFilter.range['@timestamp'].gte = startTime;
+        }
+        
+        if (endTime) {
+          rangeFilter.range['@timestamp'].lte = endTime;
+        }
+        
+        query.query.bool.must.push(rangeFilter);
+      }
+      
       // Add search filter if provided
       if (search) {
-        query.query.bool.must.push({
-          bool: {
-            should: [
-              { term: { 'service.name': search } },
-              { term: { 'kubernetes.deployment.name': search } }
-            ],
-            minimum_should_match: 1
-          }
-        } as any);
+        // Check if the search term contains wildcard characters
+        const hasWildcards = search.includes('*') || search.includes('?');
+        
+        if (hasWildcards) {
+          // Use wildcard query for pattern matching
+          query.query.bool.must.push({
+            bool: {
+              should: [
+                { wildcard: { 'service.name': search } },
+                { wildcard: { 'kubernetes.deployment.name': search } }
+              ],
+              minimum_should_match: 1
+            }
+          } as any);
+        } else {
+          // Use match query for exact matching or prefix query for partial matching
+          query.query.bool.must.push({
+            bool: {
+              should: [
+                { match: { 'service.name': search } },
+                { match: { 'kubernetes.deployment.name': search } }
+              ],
+              minimum_should_match: 1
+            }
+          } as any);
+        }
       }
       
       // Execute the query against metrics indices
@@ -198,10 +232,12 @@ export class ElasticsearchAdapter extends EventEmitter {
   
   /**
    * Get services from logs data
-   * @param search Optional search term to filter services by name
+   * @param search Optional search term to filter services by name (supports wildcards)
+   * @param startTime Optional start time for the time range in ISO format
+   * @param endTime Optional end time for the time range in ISO format
    * @returns Array of service names and their versions
    */
-  private async getServicesFromLogs(search?: string): Promise<Array<{name: string, versions: string[]}>> {
+  private async getServicesFromLogs(search?: string, startTime?: string, endTime?: string): Promise<Array<{name: string, versions: string[]}>> {
     try {
       // Create a query to find all unique service names in logs
       // OTEL logs can have service name in different fields
@@ -269,20 +305,63 @@ export class ElasticsearchAdapter extends EventEmitter {
         }
       };
       
+      // Add time range filter if provided
+      if (startTime || endTime) {
+        if (!(query.query.bool as any).must) {
+          (query.query.bool as any).must = [];
+        }
+        
+        const rangeFilter: any = { range: { '@timestamp': {} } };
+        
+        if (startTime) {
+          rangeFilter.range['@timestamp'].gte = startTime;
+        }
+        
+        if (endTime) {
+          rangeFilter.range['@timestamp'].lte = endTime;
+        }
+        
+        (query.query.bool as any).must.push(rangeFilter);
+      }
+      
       // Add search filter if provided
       if (search) {
-        (query.query.bool as any).must = [{
-          bool: {
-            should: [
-              { term: { 'service.name': search } } as any,
-              { term: { 'resource.service.name': search } } as any,
-              { term: { 'Resource.service.name': search } } as any,
-              { term: { 'kubernetes.deployment.name': search } } as any,
-              { term: { 'k8s.deployment.name': search } } as any
-            ],
-            minimum_should_match: 1
-          }
-        }];
+        // Check if the search term contains wildcard characters
+        const hasWildcards = search.includes('*') || search.includes('?');
+        
+        if (!(query.query.bool as any).must) {
+          (query.query.bool as any).must = [];
+        }
+        
+        if (hasWildcards) {
+          // Use wildcard query for pattern matching
+          (query.query.bool as any).must.push({
+            bool: {
+              should: [
+                { wildcard: { 'service.name': search } } as any,
+                { wildcard: { 'resource.service.name': search } } as any,
+                { wildcard: { 'Resource.service.name': search } } as any,
+                { wildcard: { 'kubernetes.deployment.name': search } } as any,
+                { wildcard: { 'k8s.deployment.name': search } } as any
+              ],
+              minimum_should_match: 1
+            }
+          });
+        } else {
+          // Use match query for exact matching or prefix query for partial matching
+          (query.query.bool as any).must.push({
+            bool: {
+              should: [
+                { match: { 'service.name': search } } as any,
+                { match: { 'resource.service.name': search } } as any,
+                { match: { 'Resource.service.name': search } } as any,
+                { match: { 'kubernetes.deployment.name': search } } as any,
+                { match: { 'k8s.deployment.name': search } } as any
+              ],
+              minimum_should_match: 1
+            }
+          });
+        }
       }
       
       // Execute the query against logs indices

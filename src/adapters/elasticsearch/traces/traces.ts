@@ -572,17 +572,19 @@ export class TracesAdapter extends ElasticsearchCore {
   
   /**
    * Get services from trace data with their versions
-   * @param search Optional search term to filter services by name
+   * @param search Optional search term to filter services by name (supports wildcards)
+   * @param startTime Optional start time for the time range in ISO format
+   * @param endTime Optional end time for the time range in ISO format
    * @returns Array of service objects with name and versions
    */
-  public async getServices(search?: string): Promise<Array<{name: string, versions: string[]}>> {
+  public async getServices(search?: string, startTime?: string, endTime?: string): Promise<Array<{name: string, versions: string[]}>> {
     try {
       // Query for distinct service.name values across traces
-      logger.info('[ES Adapter] getServices called', { search });
+      logger.info('[ES Adapter] getServices called', { search, startTime, endTime });
       
       // Use the correct field names based on the Elasticsearch mapping
       // Query for both services and their versions
-      const query = {
+      const query: any = {
         size: 0,
         aggs: {
           services: {
@@ -601,6 +603,29 @@ export class TracesAdapter extends ElasticsearchCore {
           }
         }
       };
+      
+      // Add time range filter if provided
+      if (startTime || endTime) {
+        if (!query.query) {
+          query.query = { bool: { filter: [] } };
+        } else if (!query.query.bool) {
+          query.query.bool = { filter: [] };
+        } else if (!query.query.bool.filter) {
+          query.query.bool.filter = [];
+        }
+        
+        const rangeFilter: any = { range: { '@timestamp': {} } };
+        
+        if (startTime) {
+          rangeFilter.range['@timestamp'].gte = startTime;
+        }
+        
+        if (endTime) {
+          rangeFilter.range['@timestamp'].lte = endTime;
+        }
+        
+        query.query.bool.filter.push(rangeFilter);
+      }
       
       logger.info('[ES Adapter] getServices query', { query });
       
@@ -638,11 +663,36 @@ export class TracesAdapter extends ElasticsearchCore {
       
       // Filter services by search term if provided
       if (search && search.trim() !== '') {
-        const searchLower = search.toLowerCase();
-        services = services.filter(service => 
-          service.name.toLowerCase().includes(searchLower)
-        );
-        logger.info('[ES Adapter] getServices filtered services', { count: services.length, services, searchTerm: search });
+        // Check if the search term contains wildcard characters (* or ?)
+        const hasWildcards = search.includes('*') || search.includes('?');
+        
+        if (hasWildcards) {
+          // Convert the wildcard pattern to a regular expression
+          const regexPattern = search
+            .replace(/\./g, '\\.')
+            .replace(/\*/g, '.*')
+            .replace(/\?/g, '.');
+          const regex = new RegExp(`^${regexPattern}$`, 'i');
+          
+          services = services.filter(service => regex.test(service.name));
+          logger.info('[ES Adapter] getServices filtered services with wildcard pattern', { 
+            count: services.length, 
+            services, 
+            searchTerm: search,
+            regexPattern
+          });
+        } else {
+          // Use simple substring matching for non-wildcard searches
+          const searchLower = search.toLowerCase();
+          services = services.filter(service => 
+            service.name.toLowerCase().includes(searchLower)
+          );
+          logger.info('[ES Adapter] getServices filtered services', { 
+            count: services.length, 
+            services, 
+            searchTerm: search 
+          });
+        }
       }
       
       return services;
