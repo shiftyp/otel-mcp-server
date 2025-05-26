@@ -1020,53 +1020,53 @@ Here are some example prompts you can use with LLMs that have access to this MCP
 ### Exploring Data Structure
 
 ```
-What fields are available in the trace data? Use the searchForTraceFields tool to find out.
+What fields are available in the trace data? Use the traceFieldsGet tool to find out.
 ```
 
 ```
-I want to analyze logs related to errors. What fields should I look at? Use the searchForLogFields tool to find fields related to errors or exceptions.
+I want to analyze logs related to errors. What fields should I look at? Use the logFieldsGet tool to find fields related to errors or exceptions.
 ```
 
 ```
-What metrics are available for the 'frontend' service? Use the searchMetricsFields tool to find relevant metric fields.
+What metrics are available for the 'frontend' service? Use the metricsFieldsGet tool to find relevant metric fields for this service.
 ```
 
-### Service Dependency Analysis
+### Service Discovery
 
 ```
-Generate a service dependency graph for the last hour. Which services have the highest error rates?
+What services are available in the system? Use the servicesGet tool to list all services.
 ```
 
 ```
-Create a flowchart for this span: <span-id>. I want to understand the request flow.
+Are there any services related to payment processing? Use the servicesGet tool with a search parameter.
 ```
 
 ### Troubleshooting
 
 ```
-Find all error traces from the last 24 hours for the 'payment' service. Use the queryTraces tool.
+Find all error traces from the last 24 hours for the 'payment' service. Use the tracesQuery tool with a bool query.
 ```
 
 ```
-Analyze this trace ID: <trace-id>. What services are involved and what was the error?
+Show me the most recent logs from the 'checkout' service. Use the logsQuery tool with appropriate filters.
 ```
 
 ```
-Look for any anomalies in the 'http.server.duration' metric for the 'checkout' service over the past hour.
+Get the CPU usage metrics for the 'api' service over the past hour. Use the metricsQuery tool to query the relevant data.
 ```
 
 ### Incident Investigation
 
 ```
-Extract an incident graph between 2:00 PM and 3:00 PM today when we had the outage. Focus on the 'authentication' service.
+Query the traces during the outage period between 2:00 PM and 3:00 PM today. Focus on the 'authentication' service and look for error status codes.
 ```
 
 ```
-Find the top 5 errors during the incident timeframe (May 23, 2025, 10:00-11:00 AM).
+Use the logsQuery tool to find logs with error severity during the incident timeframe (May 23, 2025, 10:00-11:00 AM).
 ```
 
 ```
-Query the logs during the incident and look for any authentication failures or timeout errors.
+Query the logs during the incident and look for any authentication failures or timeout errors using the logsQuery tool with a bool query.
 ```
 
 ## Windsurf-Specific Prompts with Code Context
@@ -1076,96 +1076,96 @@ When using this MCP server with [Windsurf](https://windsurf.com/editor), you can
 ### Exploring Code and Data Together
 
 ```
-What fields are available in our trace data that correspond to the error handling in our API controllers? Use the searchForTraceFields tool to find relevant fields, then show me where these are used in our code.
+What fields are available in our trace data that correspond to the error handling in our API controllers? Use the traceFieldsGet tool to find relevant fields, then show me where these are used in our code.
 ```
 
 ```
-How do our database query metrics correlate with our ORM implementation? Use searchMetricsFields to find database metrics, then analyze our database access patterns in the code.
+How do our database query metrics correlate with our ORM implementation? Use metricsFieldsGet to find database metrics, then analyze our database access patterns in the code.
 ```
 
-### Service Dependency Analysis
+### Performance Analysis
 
 ```
-Generate a service dependency graph for our application and correlate it with our codebase structure. Are there any mismatches between our service architecture and code organization?
+Use the tracesQuery tool to find slow traces in our payment processing service, then help me analyze the corresponding code to identify performance bottlenecks.
 ```
 
 ```
-Create a flowchart for this span: <span-id> and map it to the corresponding code paths in our application. I want to understand how the request flows through our services.
+Query the metrics data for CPU and memory usage patterns during peak load times, then correlate this with our resource allocation in the code.
 ```
 
 ### Code-Aware Troubleshooting
 
 ```
-I'm seeing errors in the authentication service. Use the searchLogs tool to find recent authentication errors, then analyze the relevant code in our codebase to identify potential issues. Focus on the auth middleware and token validation logic.
+I'm seeing errors in the authentication service. Use the logsQuery tool to find recent authentication errors, then analyze the relevant code in our codebase to identify potential issues. Focus on the auth middleware and token validation logic.
 ```
 
 ```
-This API endpoint is returning 500 errors. Use the queryTraces tool to find recent traces for this endpoint, then examine the code to identify what might be causing the failures. Look for error handling, database queries, and external service calls.
+This API endpoint is returning 500 errors. Use the tracesQuery tool to find recent traces for this endpoint, then examine the code to identify what might be causing the failures. Look for error handling, database queries, and external service calls.
 ```
 
 ```
-The 'payment-service' is showing high latency. Use the searchMetricsFields tool to find relevant metrics, then analyze the performance of our payment processing code. Identify any inefficient algorithms, blocking calls, or resource bottlenecks.
+The 'payment-service' is showing high latency. Use the metricsFieldsGet tool to find relevant metrics, then analyze the performance of our payment processing code. Identify any inefficient algorithms, blocking calls, or resource bottlenecks.
 ```
 
 ### Root Cause Analysis
 
 ```
-We had an incident yesterday between 2:00-3:00 PM. Use the extractIncidentGraph tool to visualize the incident, then correlate the affected services with our codebase. Identify which code changes might have contributed to the issue and suggest fixes.
+We had an incident yesterday between 2:00-3:00 PM. Use the tracesQuery and logsQuery tools to analyze the data from this time period, then correlate the affected services with our codebase. Identify which code changes might have contributed to the issue and suggest fixes.
 ```
 
 ```
-This trace ID shows a failed checkout: <trace-id>. Analyze the trace and then examine our checkout flow code to determine what went wrong. Suggest code improvements to prevent this issue in the future.
+This trace ID shows a failed checkout: <trace-id>. Use the tracesQuery tool to retrieve this trace and then examine our checkout flow code to determine what went wrong. Suggest code improvements to prevent this issue in the future.
 ```
 
 ### Performance Optimization
 
 ```
-Our database queries are slow according to the traces. Use the queryTraces tool to find the slowest database operations, then analyze our database access code and suggest optimizations. Look for missing indexes, N+1 queries, or inefficient joins.
+Our database queries are slow according to the traces. Use the tracesQuery tool to find the slowest database operations, then analyze our database access code and suggest optimizations. Look for missing indexes, N+1 queries, or inefficient joins.
 ```
 
 ```
-Use the detectMetricAnomalies tool to find unusual patterns in our API response times across all services, then review the API implementation code to identify potential performance bottlenecks. Focus on any metrics that show anomalies without specifying a particular metric field.
+Use the metricsQuery tool to find unusual patterns in our API response times across all services, then review the API implementation code to identify potential performance bottlenecks. Focus on metrics with high values.
 ```
 
 ```
-Find anomalous span durations in our payment and checkout services for the last hour. Don't limit to a specific operation - I want to see any slow operations across these services. Then suggest code improvements for the slowest operations.
+Find slow spans in our payment and checkout services for the last hour using the tracesQuery tool with appropriate filters. Then suggest code improvements for the slowest operations.
 ```
 
 ### Error Pattern Detection
 
 ```
-Use the detectLogAnomalies tool to find unusual log patterns in our payment service over the last 2 hours. Focus on both frequency spikes and error patterns. Analyze the results to identify potential issues and suggest fixes.
+Use the logsQuery tool with aggregations to find unusual log patterns in our payment service over the last 2 hours. Focus on error frequency and patterns. Analyze the results to identify potential issues and suggest fixes.
 ```
 
 ```
-Analyze error patterns across our microservices using the listTopErrors tool. Then examine our error handling code to identify common failure modes and suggest improvements to our error handling and resilience patterns.
+Analyze error patterns across our microservices using the logsQuery tool with appropriate filters and aggregations. Then examine our error handling code to identify common failure modes and suggest improvements to our error handling and resilience patterns.
 ```
 
 ```
-Find all available log fields for our authentication service, then use those fields to search for authentication failures during the incident timeframe (May 23, 2025, 1:00-2:00 PM).
+Use the logFieldsGet tool to find all available log fields for our authentication service, then use those fields with the logsQuery tool to search for authentication failures during the incident timeframe (May 23, 2025, 1:00-2:00 PM).
 ```
 
 ```
-Use the extractIncidentGraph tool to visualize the incident across our payment, checkout, and inventory services. Identify which services were most affected and suggest areas to investigate further.
+Use the tracesQuery and logsQuery tools to analyze the incident data across our payment, checkout, and inventory services. Identify which services were most affected and suggest areas to investigate further.
 ```
 
 ### Cross-Service Analysis
 
 ```
 Perform a comprehensive analysis of our checkout flow by:
-1. Finding all available metric fields for the checkout service
-2. Detecting any anomalies in those metrics
-3. Searching for error patterns in the checkout service logs
-4. Analyzing slow spans in the checkout process
+1. Using metricsFieldsGet to find all available metric fields for the checkout service
+2. Using metricsQuery to analyze those metrics for unusual patterns
+3. Using logsQuery to search for error patterns in the checkout service logs
+4. Using tracesQuery to analyze slow spans in the checkout process
 Then provide a summary of potential issues and recommendations.
 ```
 
 ```
-Compare the performance of our payment service before and after the recent deployment. Use the detectMetricAnomalies and detectSpanDurationAnomalies tools to identify any regressions or improvements. Focus on both the payment service itself and any services it depends on.
+Compare the performance of our payment service before and after the recent deployment. Use the metricsQuery and tracesQuery tools to identify any regressions or improvements. Focus on both the payment service itself and any services it depends on.
 ```
 
 ```
-Use the detectLogAnomalies tool with all detection methods to find unusual patterns across our entire system during the incident window. Group the results by service and focus on the most severe anomalies based on confidence score.
+Use the logsQuery tool with appropriate aggregations to find unusual patterns across our entire system during the incident window. Group the results by service and focus on the most severe errors.
 ```
 
 ## Building for Production
