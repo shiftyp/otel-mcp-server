@@ -762,7 +762,9 @@ export class IncidentTimelineTool {
       
       // Add each service section to the timeline
       serviceGroups.forEach((serviceEvents, service) => {
-        mermaidDiagram += `    section ${service}\n`;
+        // Escape service name for section header
+        const escapedService = escapeMermaidString(service);
+        mermaidDiagram += `    section ${escapedService}\n`;
         
         // Add events for this service
         serviceEvents.forEach(event => {
@@ -800,16 +802,16 @@ export class IncidentTimelineTool {
               hour: '2-digit', 
               minute: '2-digit'
             });
-            // Replace colons with #58; for Mermaid compatibility
-            formattedTime = formattedTime.replace(/:/g, '#58;');
+            // Use escapeMermaidString for consistent escaping of all special characters
+            formattedTime = escapeMermaidString(formattedTime);
           }
           
           // Set color based on level
           let color = '';
           if (event.level.toUpperCase().includes('ERROR')) {
-            color = ' : critical';
+            color = ' #58; critical';
           } else if (event.level.toUpperCase().includes('WARN')) {
-            color = ' : warning';
+            color = ' #58; warning';
           }
           
           // Add text labels instead of emojis to avoid rendering issues
@@ -832,7 +834,7 @@ export class IncidentTimelineTool {
             escapedMessage = escapedMessage.substring(0, 97) + '...';
           }
           
-          mermaidDiagram += `        ${formattedTime} : ${icon}${escapedMessage}${color}\n`;
+          mermaidDiagram += `        ${formattedTime} #58; ${icon}${escapedMessage}${color}\n`;
         });
       });
       
