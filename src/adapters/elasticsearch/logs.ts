@@ -221,6 +221,7 @@ export class LogsAdapter extends ElasticsearchCore {
    * @param N Number of top errors to return
    * @param serviceOrServices Optional service name or array of services to filter by
    * @param searchPattern Optional search pattern to filter errors
+   * @param query Optional Elasticsearch query string to filter errors (e.g., "service:frontend AND message:error")
    * @returns Array of error objects with count and metadata
    */
   public async topErrors(
@@ -228,7 +229,8 @@ export class LogsAdapter extends ElasticsearchCore {
     endTime: string, 
     N = 10, 
     serviceOrServices?: string | string[],
-    searchPattern?: string
+    searchPattern?: string,
+    query?: string
   ): Promise<{ 
     error: string, 
     count: number, 
@@ -238,12 +240,12 @@ export class LogsAdapter extends ElasticsearchCore {
     trace_id?: string, 
     span_id?: string 
   }[]> {
-    logger.info('[ES Adapter] Finding top errors', { startTime, endTime, serviceOrServices, searchPattern });
+    logger.info('[ES Adapter] Finding top errors', { startTime, endTime, serviceOrServices, searchPattern, query });
     
     try {
       // First try to get errors from logs (following OTEL spec)
       // Always use 'error' as the log level for the topErrors functionality
-      const logErrors = await this.errorAdapter.getErrorsFromLogs(startTime, endTime, N, serviceOrServices, searchPattern);
+      const logErrors = await this.errorAdapter.getErrorsFromLogs(startTime, endTime, N, serviceOrServices, searchPattern || query);
       
       // If we found errors in logs, return them
       if (logErrors.length > 0) {
@@ -253,7 +255,7 @@ export class LogsAdapter extends ElasticsearchCore {
       
       // If no errors in logs, try to get errors from traces
       logger.info('[ES Adapter] No errors found in logs, trying traces');
-      const traceErrors = await this.errorAdapter.getErrorsFromTraces(startTime, endTime, N, serviceOrServices, searchPattern);
+      const traceErrors = await this.errorAdapter.getErrorsFromTraces(startTime, endTime, N, serviceOrServices, searchPattern || query);
       
       if (traceErrors.length > 0) {
         logger.info('[ES Adapter] Found errors in traces', { count: traceErrors.length });

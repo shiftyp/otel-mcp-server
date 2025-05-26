@@ -84,6 +84,19 @@ export class LogErrorsAdapter extends ElasticsearchCore {
           }
         });
       }
+      
+      // Add Elasticsearch query string if provided
+      if (arguments.length > 5 && arguments[5]) {
+        const queryString = arguments[5];
+        query.bool.must.push({
+          query_string: {
+            query: queryString,
+            analyze_wildcard: true,
+            default_field: "*"
+          }
+        });
+        logger.info('[ES Adapter] Added Elasticsearch query string to logs query', { queryString });
+      }
 
       // Add service filter if provided
       if (serviceOrServices) {
@@ -472,6 +485,19 @@ export class LogErrorsAdapter extends ElasticsearchCore {
             minimum_should_match: 1
           }
         });
+      }
+      
+      // Add Elasticsearch query string if provided
+      if (arguments.length > 5 && arguments[5]) {
+        const queryString = arguments[5];
+        query.bool.must.push({
+          query_string: {
+            query: queryString,
+            analyze_wildcard: true,
+            default_field: "*"
+          }
+        });
+        logger.info('[ES Adapter] Added Elasticsearch query string to traces query', { queryString });
       }
 
       // We'll apply service filtering after getting the results

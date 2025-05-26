@@ -394,8 +394,8 @@ export class ElasticsearchAdapter extends EventEmitter {
     return this.logsAdapter.searchOtelLogs(pattern, serviceOrServices, logLevel, startTime, endTime);
   }
   
-  public async topErrors(startTime: string, endTime: string, N = 10, serviceOrServices?: string | string[], searchPattern?: string): Promise<{ error: string, count: number, level?: string, service?: string, timestamp?: string, trace_id?: string, span_id?: string }[]> {
-    return this.logsAdapter.topErrors(startTime, endTime, N, serviceOrServices, searchPattern);
+  public async topErrors(startTime: string, endTime: string, N?: number, serviceOrServices?: string | string[], searchPattern?: string, query?: string): Promise<{ error: string, count: number, level?: string, service?: string, timestamp?: string, trace_id?: string, span_id?: string }[]> {
+    return this.logsAdapter.topErrors(startTime, endTime, N, serviceOrServices, searchPattern, query);
   }
   
   public async queryLogs(query: any): Promise<any> {
