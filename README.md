@@ -827,14 +827,23 @@ You can test OTEL MCP Server with the official [OpenTelemetry Demo](https://gith
    ```
 4. **Run OTEL MCP Server** and connect your MCP client (e.g., Windsurf)
 
-### ⚠️ Elasticsearch Security Configuration
+### ⚠️ Elasticsearch Configuration and Compatibility
 
+#### **Security Configuration:**
 For development and testing purposes, we've disabled SSL and security in Elasticsearch to simplify connectivity:
 
-#### **Development Setup:**
 - We've configured Elasticsearch with security features disabled
 - This allows direct HTTP connections without SSL/TLS verification issues
 - No need for proxies or complex authentication in development environments
+
+#### **Version Compatibility:**
+There are important version compatibility considerations to be aware of:
+
+- **Elasticsearch Version**: This tool is tested with Elasticsearch 8.x. Earlier or later versions may have different index patterns or field mappings.
+
+- **OpenTelemetry Schema**: The OTEL MCP Server expects the OpenTelemetry schema used in the OTEL Demo. Different schema versions may have different field names or data structures.
+
+- **Index Patterns**: The server looks for indices with patterns like `.ds-traces-*`, `.ds-metrics-*`, and `.ds-logs-*`. Custom index patterns will require code modifications.
 
 #### **Configuration:**
 - Set `ELASTICSEARCH_URL` to the direct HTTP endpoint of your Elasticsearch instance
@@ -848,7 +857,7 @@ ELASTICSEARCH_URL=http://localhost:9200
 
 **Note:** For production environments, you should enable Elasticsearch security features and implement proper authentication and encryption. The current setup is optimized for development ease of use.
 
-If you encounter connection issues, check the logs for error details. Most connection problems can be resolved by ensuring Elasticsearch security features are properly disabled in your development environment.
+If you encounter connection issues or missing data, check the logs for error details. Issues may be related to Elasticsearch security configuration, version incompatibility, or differences in the OpenTelemetry schema.
 
 ## 🚢 Deployment & Orchestration Notes
 
