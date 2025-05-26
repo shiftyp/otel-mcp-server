@@ -472,7 +472,6 @@ Key advantages:
 - **Discovery Support**: Tools to help understand the available data structure
 - **Minimal Abstraction**: No high-level abstractions that hide the underlying data model
 - **Consistent Error Handling**: Structured error responses across all tools
-```
 
 ## 🔄 Adaptive Tool Registration
 
