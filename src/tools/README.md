@@ -1,42 +1,36 @@
 # tools/
 
-This directory contains modular tool classes for OTEL MCP Server, separated by resource type and function. Each tool class encapsulates logic for a specific set of operations (traces, logs, metrics, AI, etc.) and depends on the ElasticsearchAdapter.
+This directory contains modular tool classes for OTEL MCP Server that provide direct access to OpenTelemetry data in Elasticsearch. Each tool focuses on providing transparent, flexible query capabilities without additional abstraction layers.
 
-- otelTraces.ts — Trace and span analysis, dependency graphs
-- otelLogs.ts   — Log search, error aggregation
-- otelMetrics.ts — Metric queries, aggregations
-- incidentGraph.ts — Incident subgraph extraction with Mermaid output
-- anomalyDetection.ts — Metric anomaly detection
-- logAnomalyDetection.ts — Log anomaly detection using hybrid approach
+## Direct Query Tools
 
-## Graph Visualization with Mermaid
+The MCP server provides the following direct query tools:
 
-Both the service dependency graph and incident graph tools return a `mermaid` field in their output, containing a Mermaid flowchart string for easy visualization:
+- **logsQuery** - Execute custom Elasticsearch queries against log data
+- **tracesQuery** - Execute custom Elasticsearch queries against trace data
+- **queryMetrics** - Execute custom Elasticsearch queries against metric data
 
-````markdown
-```mermaid
-flowchart TD
-serviceA -->|42| serviceB
-```
-````
+## Field Discovery Tools
 
-## Anomaly Detection
+To help with constructing queries, the following field discovery tools are available:
 
-### Metric Anomaly Detection
+- **logFieldsGet** - Discover available log fields with their types and schemas
+- **traceFieldsGet** - Discover available trace fields with their types
+- **metricsFieldsGet** - Discover available metric fields with their types
 
-The metric anomaly detection tool (`anomalyDetection.ts`) flags time buckets in metrics where the value is an outlier (mean + N*stddev). Register and use as an MCP tool.
+## Service Discovery
 
-### Log Anomaly Detection
-
-The log anomaly detection tool (`logAnomalyDetection.ts`) implements a hybrid approach for detecting anomalous logs without requiring machine learning models. It combines multiple detection strategies:
-
-1. **Frequency-based detection** - Identifies unusual spikes or drops in log volume compared to a baseline period
-2. **Pattern-based detection** - Searches for logs containing error patterns or unexpected severity changes
-3. **Statistical outlier detection** - Flags logs with unusual field values based on statistical measures
-4. **Clustering and cardinality analysis** - Detects unusual groupings or unexpected variety in log messages
-
-The tool supports filtering by service and provides configurable parameters for fine-tuning detection sensitivity. Results are grouped by service when analyzing multiple services.
+- **servicesGet** - List all available services and their versions
 
 ## Extending Tools
 
-To add new tools, create a new file in `src/tools/`, implement your class, and register its methods as MCP tools in `server.ts`.
+To add new direct query tools, create a new file in `src/tools/implementations/`, implement your class, and register its methods as MCP tools using the `registerMcpTool` function. Focus on providing transparent access to the underlying Elasticsearch data without adding unnecessary abstraction layers.
+
+## Design Philosophy
+
+The tools in this project follow these principles:
+
+1. **Direct Access** - Provide transparent access to Elasticsearch data without hiding query complexity
+2. **Flexibility** - Allow users to construct their own queries for maximum control
+3. **Discovery Support** - Provide tools to help users understand the available data structure
+4. **Minimal Abstraction** - Avoid high-level abstractions that hide the underlying data model

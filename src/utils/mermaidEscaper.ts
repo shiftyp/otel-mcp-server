@@ -62,8 +62,11 @@ export function escapeMermaidString(input: string | null | undefined, isAxisLabe
  * @param labels Array of label strings
  * @returns Escaped labels joined in Mermaid format
  */
-export function escapeMermaidAxisLabels(labels: string[]): string {
-  return labels.map(label => escapeMermaidString(label, true)).join(',');
+export function escapeMermaidAxisLabels(labels: string[] | any[]): string {
+  if (!labels || !Array.isArray(labels)) {
+    return '';
+  }
+  return labels.map(label => escapeMermaidString(String(label), true)).join(',');
 }
 
 /**

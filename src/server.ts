@@ -6,7 +6,7 @@ import { McpServer } from '@modelcontextprotocol/sdk/server/mcp.js';
 import { StdioServerTransport } from '@modelcontextprotocol/sdk/server/stdio.js';
 
 import { ElasticsearchAdapter } from './adapters/elasticsearch/index.js';
-import { registerAllTools } from './tools/implementations/index.js';
+import { registerAllTools } from './tools/index.js';
 import { logger } from './utils/logger.js';
 
 // Instantiate the MCP server

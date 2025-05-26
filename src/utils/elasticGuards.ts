@@ -190,32 +190,40 @@ export class ElasticGuards {
   /**
    * Format an error response for MCP tools
    * @param error The error to format
+   * @param params Optional parameters that were passed to the tool
    * @returns Formatted error response for MCP
    */
-  static formatErrorResponse(error: any): { content: Array<{type: string, text: string}> } {
+  static formatErrorResponse(error: any, params?: Record<string, any>): { content: Array<{type: string, text: string}> } {
     if (error instanceof ElasticsearchDataError) {
-      const errorMessage = {
-        error: error.message,
+      const errorObj = {
+        error: true,
+        type: 'ElasticsearchDataError',
+        message: error.message,
         dataType: error.dataType,
-        details: error.details || {}
+        details: error.details || {},
+        params: params || {}
       };
       
       return {
         content: [{
           type: 'text',
-          text: JSON.stringify(errorMessage, null, 2)
+          text: JSON.stringify(errorObj)
         }]
       };
     }
     
     // Handle generic errors
+    const errorObj = {
+      error: true,
+      type: error instanceof Error ? error.constructor.name : 'UnknownError',
+      message: error instanceof Error ? error.message : String(error),
+      params: params || {}
+    };
+    
     return {
       content: [{
         type: 'text',
-        text: JSON.stringify({
-          error: error instanceof Error ? error.message : String(error),
-          details: { stack: error instanceof Error ? error.stack : undefined }
-        }, null, 2)
+        text: JSON.stringify(errorObj)
       }]
     };
   }

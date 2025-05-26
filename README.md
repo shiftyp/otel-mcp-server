@@ -31,12 +31,52 @@ To use OTEL MCP Server with tools like MCP Inspector or Windsurf, use the follow
 ## ✨ Features
 
 - **Query** Elasticsearch for traces, metrics, and logs
-- **Analyze a Trace**: Use the `analyze-trace` tool to get span count, root span, duration, and services for any trace
+- **Analyze a Trace**: Use the `traceAnalyze` tool to get span count, root span, duration, and services for any trace
 - **Anomaly Detection**: Detect anomalies in metrics, spans, and logs without ML models
 - **Service-Aware Tools**: Filter all tools by service or analyze across multiple services
 - **Field Discovery**: Find available fields for specific services to use in anomaly detection
 - **Connection Validation** on startup
 - **Cross-Platform**: Windows, macOS, and Linux
+- **Dual Mapping Mode Support**: Compatible with both OTEL and ECS mapping modes in Elasticsearch
+
+## 🔄 Elasticsearch Mapping Modes
+
+The OTEL MCP Server supports two Elasticsearch mapping modes for OpenTelemetry data:
+
+### OTEL Mapping Mode
+
+The `otel` mapping mode preserves the original OpenTelemetry data structure, keeping attribute names and closely following the OTLP event structure. This mode requires Elasticsearch 8.12+ and uses data streams for optimal time series performance.
+
+**Configuration requirements:**
+- Elasticsearch 8.12+ or 9.0+
+- Data stream index templates for logs, metrics, and traces
+- OpenTelemetry Collector configured with:
+  ```yaml
+  exporters:
+    elasticsearch:
+      mapping:
+        mode: otel
+      headers:
+        X-Elastic-Mapping-Mode: otel
+  ```
+
+### ECS Mapping Mode
+
+The `ecs` mapping mode maps OpenTelemetry fields to the Elastic Common Schema (ECS), making the data more compatible with existing Elastic dashboards and tools.
+
+**Configuration requirements:**
+- Works with all Elasticsearch versions
+- OpenTelemetry Collector configured with:
+  ```yaml
+  exporters:
+    elasticsearch:
+      mapping:
+        mode: ecs
+      headers:
+        X-Elastic-Mapping-Mode: ecs
+  ```
+
+The OTEL MCP Server automatically detects and adapts to both mapping modes, so you can use either format without changing your configuration.
 
 ## 🚀 Quick Start
 

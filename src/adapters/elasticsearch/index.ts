@@ -1,7 +1,7 @@
-import { ElasticsearchCore, ElasticsearchAdapterOptions } from './core.js';
-import { TracesAdapter } from './traces.js';
-import { MetricsAdapter } from './metrics.js';
-import { LogsAdapter } from './logs.js';
+import { ElasticsearchCore, ElasticsearchAdapterOptions } from './core/core.js';
+import { TracesAdapter } from './traces/traces.js';
+import { MetricsAdapter } from './metrics/metrics.js';
+import { LogsAdapter } from './logs/logs.js';
 import { EventEmitter } from 'events';
 import { logger } from '../../utils/logger.js';
 
@@ -388,6 +388,10 @@ export class ElasticsearchAdapter extends EventEmitter {
   }
   
   // Logs methods
+  public async listLogFields(includeSourceDocument: boolean = true): Promise<Array<{ name: string, type: string, count: number, schema: any }>> {
+    return this.logsAdapter.listLogFields(includeSourceDocument);
+  }
+
   public async searchOtelLogs(pattern: string, serviceOrServices?: string | string[], logLevel?: string, startTime?: string, endTime?: string): Promise<{
     timestamp: string;
     service: string;
@@ -462,8 +466,8 @@ export class ElasticsearchAdapter extends EventEmitter {
 }
 
 // Re-export types and classes
-export { ElasticsearchAdapterOptions } from './core.js';
-export { ElasticsearchCore } from './core.js';
-export { TracesAdapter } from './traces.js';
-export { MetricsAdapter } from './metrics.js';
-export { LogsAdapter } from './logs.js';
+export { ElasticsearchAdapterOptions } from './core/core.js';
+export { ElasticsearchCore } from './core/core.js';
+export { TracesAdapter } from './traces/traces.js';
+export { MetricsAdapter } from './metrics/metrics.js';
+export { LogsAdapter } from './logs/logs.js';

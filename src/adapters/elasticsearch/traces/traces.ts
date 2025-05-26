@@ -1,0 +1,681 @@
+import { ElasticsearchCore } from '../core/core.js';
+import { logger } from '../../../utils/logger.js';
+
+export class TracesAdapter extends ElasticsearchCore {
+  /**
+   * Analyze a trace by traceId
+   */
+  public async analyzeTrace(traceId: string): Promise<any> {
+    try {
+      logger.info('[ES Adapter] analyzeTrace called', { traceId });
+      
+      // First, get the root span for this trace
+      const rootSpan = await this.getRootSpan(traceId);
+      if (!rootSpan) {
+        logger.warn('[ES Adapter] No root span found for trace', { traceId });
+        return { message: `No spans found for trace ID: ${traceId}` };
+      }
+      
+      // Get all spans for this trace
+      const spans = await this.getAllSpansForTrace(traceId);
+      if (!spans || spans.length === 0) {
+        logger.warn('[ES Adapter] No spans found for trace', { traceId });
+        return { message: `No spans found for trace ID: ${traceId}` };
+      }
+      
+      logger.info('[ES Adapter] Found spans for trace', { traceId, spanCount: spans.length });
+      
+      // Extract service name from various possible fields (both OTEL and ECS mapping modes)
+      const extractServiceName = (span: any): string => {
+        // OTEL mapping mode fields
+        const otelServiceName = 
+          // Direct path to service.name in resource attributes
+          (span.resource && span.resource.attributes && span.resource.attributes['service.name']) ||
+          // Flattened path to service.name
+          span['resource.attributes.service.name'] ||
+          // Try to extract from pod name in OTEL format
+          (span.resource && span.resource.attributes && span.resource.attributes['k8s.pod.name'] && (() => {
+            const podName = span.resource.attributes['k8s.pod.name'];
+            const dashIndex = podName.lastIndexOf('-');
+            return dashIndex > 0 ? podName.substring(0, dashIndex) : podName;
+          })());
+          
+        if (otelServiceName) return otelServiceName;
+        
+        // ECS mapping mode fields (fallback)
+        return span['Resource.service.name'] ||
+          (span.Resource && span.Resource.service && span.Resource.service.name) ||
+          (span.service && span.service.name) ||
+          (span.Attributes && span.Attributes['service.name']) ||
+          (span['Resource.k8s.deployment.name']) ||
+          (span.Resource && span.Resource.k8s && span.Resource.k8s.deployment && span.Resource.k8s.deployment.name) ||
+          // If we have a pod name, extract the service name part
+          (span['Resource.k8s.pod.name'] && (() => {
+            const podName = span['Resource.k8s.pod.name'];
+            const dashIndex = podName.lastIndexOf('-');
+            return dashIndex > 0 ? podName.substring(0, dashIndex) : podName;
+          })()) ||
+          'unknown';
+      };
+      
+      // Basic trace analysis
+      const analysis = {
+        traceId,
+        rootSpan,
+        spanCount: spans.length,
+        serviceName: extractServiceName(rootSpan),
+        operationName: rootSpan.Name || 'unknown',
+        status: rootSpan.TraceStatus || 'unknown',
+        errorCount: spans.filter((span: any) => span.TraceStatus === 2).length,
+        services: [...new Set(spans.map(extractServiceName))],
+      };
+      
+      logger.info('[ES Adapter] Trace analysis complete', { 
+        traceId, 
+        spanCount: spans.length, 
+        services: analysis.services
+      });
+      
+      return analysis;
+    } catch (error) {
+      logger.error('Error analyzing trace', { traceId, error });
+      return { message: `Error analyzing trace: ${error instanceof Error ? error.message : String(error)}` };
+    }
+  }
+  
+  /**
+   * Get the root span for a trace
+   */
+  private async getRootSpan(traceId: string): Promise<any> {
+    logger.info('[ES Adapter] Getting root span for trace', { traceId });
+    
+    // Try OTEL mapping mode first (trace_id, parent_span_id)
+    const otelResponse = await this.request('POST', '/traces-*/_search', {
+      size: 1,
+      query: {
+        bool: {
+          must: [
+            { term: { 'trace_id': traceId } }
+          ],
+          should: [
+            // Root spans either have empty parent_span_id or no parent_span_id field
+            { term: { 'parent_span_id': '' } },
+            { bool: { must_not: [{ exists: { field: 'parent_span_id' } }] } }
+          ],
+          minimum_should_match: 1
+        }
+      }
+    });
+    
+    if (otelResponse.hits?.hits?.length > 0) {
+      logger.info('[ES Adapter] Found root span in OTEL format', { traceId });
+      return otelResponse.hits.hits[0]._source;
+    }
+    
+    // Fall back to ECS mapping mode (TraceId, ParentSpanId)
+    const ecsResponse = await this.request('POST', '/traces-*/_search', {
+      size: 1,
+      query: {
+        bool: {
+          must: [
+            { term: { 'TraceId.keyword': traceId } }
+          ],
+          should: [
+            { term: { 'ParentSpanId.keyword': '' } },
+            { bool: { must_not: [{ exists: { field: 'ParentSpanId' } }] } }
+          ],
+          minimum_should_match: 1
+        }
+      }
+    });
+    
+    if (ecsResponse.hits?.hits?.length > 0) {
+      logger.info('[ES Adapter] Found root span in ECS format', { traceId });
+      return ecsResponse.hits.hits[0]._source;
+    }
+    
+    // Last resort: just get any span with this trace ID
+    const lastFallbackResponse = await this.request('POST', '/traces-*/_search', {
+      size: 1,
+      query: {
+        bool: {
+          should: [
+            { term: { 'trace_id': traceId } },
+            { term: { 'TraceId.keyword': traceId } }
+          ],
+          minimum_should_match: 1
+        }
+      }
+    });
+    
+    if (lastFallbackResponse.hits?.hits?.length > 0) {
+      logger.info('[ES Adapter] Using first span as root (fallback)', { traceId });
+      return lastFallbackResponse.hits.hits[0]._source;
+    }
+    
+    logger.warn('[ES Adapter] No spans found for trace', { traceId });
+    return null;
+  }
+  
+  /**
+   * Get all spans for a trace
+   */
+  private async getAllSpansForTrace(traceId: string): Promise<any[]> {
+    logger.info('[ES Adapter] Getting all spans for trace', { traceId });
+    
+    // Query that works for both OTEL and ECS mapping modes
+    const response = await this.request('POST', '/traces-*/_search', {
+      size: 1000,
+      query: {
+        bool: {
+          should: [
+            // OTEL mapping mode
+            { term: { 'trace_id': traceId } },
+            // ECS mapping mode
+            { term: { 'TraceId.keyword': traceId } }
+          ],
+          minimum_should_match: 1
+        }
+      },
+      sort: [
+        { '@timestamp': { order: 'asc' } }
+      ]
+    });
+    
+    const spans = response.hits?.hits?.map((hit: any) => hit._source) || [];
+    logger.info('[ES Adapter] Found spans for trace', { traceId, count: spans.length });
+    return spans;
+  }
+  
+  /**
+   * Lookup a span by spanId
+   */
+  public async spanLookup(spanId: string): Promise<any | null> {
+    logger.info('[ES Adapter] Looking up span', { spanId });
+    
+    const response = await this.request('POST', '/traces-*/_search', {
+      size: 1,
+      query: {
+        bool: {
+          should: [
+            // OTEL mapping mode
+            { term: { 'span_id': spanId } },
+            // ECS mapping mode
+            { term: { 'SpanId.keyword': spanId } }
+          ],
+          minimum_should_match: 1
+        }
+      }
+    });
+    
+    if (response.hits?.hits?.length > 0) {
+      return response.hits.hits[0]._source;
+    }
+    
+    logger.warn('[ES Adapter] Span not found', { spanId });
+    return null;
+  }
+  
+  /**
+   * Build a service dependency graph for a time window
+   */
+  public async serviceDependencyGraph(startTime: string, endTime: string): Promise<{ parent: string, child: string, count: number, errorCount?: number, errorRate?: number }[]> {
+    logger.info('[ES Adapter] Building service dependency graph', { startTime, endTime });
+    
+    try {
+      // First, check if we have any trace data in the specified time range
+      const checkResponse = await this.request('POST', '/traces-*/_search', {
+        size: 0,
+        query: {
+          range: {
+            '@timestamp': {
+              gte: startTime,
+              lte: endTime
+            }
+          }
+        }
+      });
+      
+      const totalHits = checkResponse.hits?.total?.value || 0;
+      logger.info(`[ES Adapter] Found ${totalHits} total spans in time range`);
+      
+      if (totalHits === 0) {
+        logger.info('[ES Adapter] No spans found in the specified time range');
+        // Return a placeholder dependency to show something
+        return [
+          {
+            parent: 'No Data',
+            child: 'Try Different Time Range',
+            count: 1,
+            errorCount: 0,
+            errorRate: 0
+          }
+        ];
+      }
+      
+      // Get spans with parent-child relationships to build accurate service dependencies
+      const response = await this.request('POST', '/traces-*/_search', {
+        size: 10000, // Get a significant number of spans to analyze
+        query: {
+          bool: {
+            must: [
+              {
+                range: {
+                  '@timestamp': {
+                    gte: startTime,
+                    lte: endTime
+                  }
+                }
+              },
+              {
+                exists: {
+                  field: 'ParentSpanId.keyword' // Only get spans with parent relationships
+                }
+              }
+            ]
+          }
+        },
+        _source: [
+          'Resource.service.name',
+          'ParentSpanId',
+          'SpanId',
+          'TraceId',
+          'Status.code'
+        ]
+      });
+      
+      // Map to track service relationships and counts
+      const serviceRelationships = new Map<string, Map<string, { count: number, errors: number }>>();
+      
+      // Map to track span IDs to their service names
+      const spanIdToService = new Map<string, string>();
+      
+      // First pass: collect all span IDs and their service names
+      if (response.hits?.hits) {
+        for (const hit of response.hits.hits) {
+          const source = hit._source;
+          const spanId = source.SpanId;
+          const service = this.extractServiceName(source);
+          
+          if (spanId && service) {
+            spanIdToService.set(spanId, service);
+          }
+        }
+      }
+      
+      // Second pass: build service relationships based on parent-child span relationships
+      if (response.hits?.hits) {
+        for (const hit of response.hits.hits) {
+          const source = hit._source;
+          const childSpanId = source.SpanId;
+          const parentSpanId = source.ParentSpanId;
+          const childService = this.extractServiceName(source);
+          
+          // Check if this span has an error
+          const hasError = source.Status?.code === 2; // 2 = ERROR in OTEL
+          
+          // If we know both the parent span's service and this span's service
+          if (parentSpanId && childService && spanIdToService.has(parentSpanId)) {
+            const parentService = spanIdToService.get(parentSpanId)!;
+            
+            // Only create a relationship if the services are different
+            if (parentService !== childService) {
+              // Add the relationship from parent to child
+              if (!serviceRelationships.has(parentService)) {
+                serviceRelationships.set(parentService, new Map());
+              }
+              
+              const parentMap = serviceRelationships.get(parentService)!;
+              if (!parentMap.has(childService)) {
+                parentMap.set(childService, { count: 0, errors: 0 });
+              }
+              
+              const stats = parentMap.get(childService)!;
+              stats.count++;
+              if (hasError) {
+                stats.errors++;
+              }
+            }
+          }
+        }
+      }
+      
+      // If we don't have enough relationships, try a fallback approach with trace-level service grouping
+      if (serviceRelationships.size === 0) {
+        logger.info('[ES Adapter] No parent-child relationships found, using trace-level grouping fallback');
+        
+        // Get traces and their services
+        const traceResponse = await this.request('POST', '/traces-*/_search', {
+          size: 0,
+          query: {
+            range: {
+              '@timestamp': {
+                gte: startTime,
+                lte: endTime
+              }
+            }
+          },
+          aggs: {
+            traces: {
+              terms: {
+                field: 'TraceId.keyword',
+                size: 1000
+              },
+              aggs: {
+                services: {
+                  terms: {
+                    field: 'Resource.service.name.keyword',
+                    size: 100
+                  }
+                }
+              }
+            }
+          }
+        });
+        
+        // Process the trace-level aggregation results
+        const traceBuckets = traceResponse.aggregations?.traces?.buckets || [];
+        
+        // For each trace, try to determine the flow of services
+        for (const traceBucket of traceBuckets) {
+          const serviceBuckets = traceBucket.services?.buckets || [];
+          const services = serviceBuckets.map((bucket: any) => bucket.key);
+          
+          if (services.length > 1) {
+            // Instead of connecting all services to each other,
+            // create a chain based on the order they appear in the bucket
+            // This is a heuristic but better than a fully connected graph
+            for (let i = 0; i < services.length - 1; i++) {
+              const service1 = services[i];
+              const service2 = services[i + 1];
+              
+              if (!serviceRelationships.has(service1)) {
+                serviceRelationships.set(service1, new Map());
+              }
+              
+              const serviceMap = serviceRelationships.get(service1)!;
+              if (!serviceMap.has(service2)) {
+                serviceMap.set(service2, { count: 0, errors: 0 });
+              }
+              
+              serviceMap.get(service2)!.count++;
+            }
+          }
+        }
+      }
+      
+      // If we still don't have any relationships, create a simple chain of all services
+      if (serviceRelationships.size === 0) {
+        logger.info('[ES Adapter] No relationships found, creating a simple chain of all services');
+        
+        // Get all services
+        const servicesResponse = await this.request('POST', '/traces-*/_search', {
+          size: 0,
+          query: {
+            range: {
+              '@timestamp': {
+                gte: startTime,
+                lte: endTime
+              }
+            }
+          },
+          aggs: {
+            services: {
+              terms: {
+                field: 'Resource.service.name.keyword',
+                size: 100
+              }
+            }
+          }
+        });
+        
+        const serviceBuckets = servicesResponse.aggregations?.services?.buckets || [];
+        const services = serviceBuckets.map((bucket: any) => bucket.key);
+        
+        logger.info(`[ES Adapter] Found ${services.length} services in fallback mode`);
+        
+        // Create a simple chain of services
+        if (services.length > 1) {
+          for (let i = 0; i < services.length - 1; i++) {
+            if (!serviceRelationships.has(services[i])) {
+              serviceRelationships.set(services[i], new Map());
+            }
+            
+            const serviceMap = serviceRelationships.get(services[i])!;
+            if (!serviceMap.has(services[i + 1])) {
+              serviceMap.set(services[i + 1], { count: 1, errors: 0 });
+            }
+          }
+        } else if (services.length === 1) {
+          // If we only have one service, create a self-reference
+          if (!serviceRelationships.has(services[0])) {
+            serviceRelationships.set(services[0], new Map());
+          }
+          serviceRelationships.get(services[0])!.set('External', { count: 1, errors: 0 });
+        } else {
+          // If we still have no services, return a placeholder
+          return [
+            {
+              parent: 'No Services',
+              child: 'Found',
+              count: 1,
+              errorCount: 0,
+              errorRate: 0
+            }
+          ];
+        }
+      }
+      
+      // Convert the service relationships to edges
+      const edges: { parent: string, child: string, count: number, errorCount?: number, errorRate?: number }[] = [];
+      for (const [parent, children] of serviceRelationships.entries()) {
+        for (const [child, stats] of children.entries()) {
+          edges.push({
+            parent,
+            child,
+            count: stats.count,
+            errorCount: stats.errors,
+            errorRate: stats.errors > 0 ? stats.errors / stats.count : 0
+          });
+        }
+      }
+      
+      logger.info(`[ES Adapter] Generated ${edges.length} service dependency edges`);
+      return edges;
+    } catch (error) {
+      logger.error('[ES Adapter] Error building service dependency graph', { startTime, endTime, error });
+      
+      // Return a placeholder in case of error
+      return [
+        {
+          parent: 'Error',
+          child: error instanceof Error ? error.message : String(error),
+          count: 1,
+          errorCount: 1,
+          errorRate: 1
+        }
+      ];
+    }
+  }
+
+  /**
+   * Extract service name from various possible fields in a span
+   */
+  private extractServiceName(span: any): string {
+    // Try different possible locations for service name
+    return span['Resource.service.name'] || 
+           span?.Resource?.service?.name || 
+           span['resource.attributes.service.name'] || 
+           span?.resource?.attributes?.service?.name ||
+           span['service.name'] ||
+           'unknown';
+  }
+
+  /**
+   * Helper method to add a service relationship to the map
+   */
+  private addServiceRelationship(
+    relationships: Map<string, Map<string, { count: number, errors: number }>>,
+    parent: string,
+    child: string
+  ): void {
+    if (!relationships.has(parent)) {
+      relationships.set(parent, new Map());
+    }
+    
+    const parentMap = relationships.get(parent)!;
+    if (!parentMap.has(child)) {
+      parentMap.set(child, { count: 0, errors: 0 });
+    }
+    
+    const stats = parentMap.get(child)!;
+    stats.count++;
+  }
+  
+  /**
+   * Query traces with a custom query
+   */
+  /**
+   * Query traces with a custom query
+   * Supports runtime_mappings and script_fields for advanced Elasticsearch queries
+   */
+  public async queryTraces(query: any): Promise<any> {
+    // If _source isn't explicitly set to false, ensure it's enabled
+    if (query._source !== false) {
+      query._source = query._source || true;
+    }
+    
+    // Log the query for debugging purposes
+    logger.debug('[ES Adapter] Executing traces query', { 
+      hasRuntimeMappings: !!query.runtime_mappings,
+      hasScriptFields: !!query.script_fields,
+      queryStructure: Object.keys(query)
+    });
+    
+    try {
+      return await this.request('POST', '/traces-*/_search', query);
+    } catch (error: unknown) {
+      // Provide more detailed error information for runtime field issues
+      if (error instanceof Error && 
+          (error.message.includes('runtime_mappings') || error.message.includes('script'))) {
+        logger.error('[ES Adapter] Error with runtime mappings or scripts in traces query', { 
+          error: error.message,
+          query: JSON.stringify(query)
+        });
+        throw new Error(`Error with runtime mappings or scripts in traces query: ${error.message}`);
+      }
+      
+      // Re-throw the original error
+      throw error;
+    }
+  }
+  
+  /**
+   * Get services from trace data with their versions
+   * @param search Optional search term to filter services by name
+   * @returns Array of service objects with name and versions
+   */
+  public async getServices(search?: string): Promise<Array<{name: string, versions: string[]}>> {
+    try {
+      // Query for distinct service.name values across traces
+      logger.info('[ES Adapter] getServices called', { search });
+      
+      // Use the correct field names based on the Elasticsearch mapping
+      // Query for both services and their versions
+      const query = {
+        size: 0,
+        aggs: {
+          services: {
+            terms: {
+              field: 'Resource.service.name.keyword',
+              size: 1000
+            },
+            aggs: {
+              versions: {
+                terms: {
+                  field: 'Resource.service.version.keyword',
+                  size: 100
+                }
+              }
+            }
+          }
+        }
+      };
+      
+      logger.info('[ES Adapter] getServices query', { query });
+      
+      // Query the traces index
+      const response = await this.request('POST', '/traces-generic-default/_search', query);
+      
+      logger.info('[ES Adapter] getServices response', { 
+        hasAggregations: !!response.aggregations,
+        responseKeys: Object.keys(response || {}),
+        aggregationKeys: response.aggregations ? Object.keys(response.aggregations) : [] 
+      });
+      
+      // Process services and their versions from the aggregation
+      let services: Array<{name: string, versions: string[]}> = [];
+      
+      if (response.aggregations?.services?.buckets?.length > 0) {
+        logger.info('[ES Adapter] Found services in services aggregation', { 
+          count: response.aggregations.services.buckets.length 
+        });
+        
+        services = response.aggregations.services.buckets.map((bucket: any) => {
+          // Get versions for this service
+          const versions = bucket.versions?.buckets?.map((versionBucket: any) => versionBucket.key) || [];
+          
+          return {
+            name: bucket.key,
+            versions
+          };
+        });
+      } else {
+        logger.warn('[ES Adapter] No services found in aggregation');
+      }
+      
+      logger.info('[ES Adapter] getServices raw services', { count: services.length, services });
+      
+      // Filter services by search term if provided
+      if (search && search.trim() !== '') {
+        const searchLower = search.toLowerCase();
+        services = services.filter(service => 
+          service.name.toLowerCase().includes(searchLower)
+        );
+        logger.info('[ES Adapter] getServices filtered services', { count: services.length, services, searchTerm: search });
+      }
+      
+      return services;
+    } catch (error) {
+      logger.error('[ES Adapter] getServices error', { error });
+      throw error;
+    }
+  }
+  
+  /**
+   * Get operations for a specific service
+   */
+  public async getOperations(service: string): Promise<string[]> {
+    // Query for distinct span names for a specific service
+    const response = await this.request('POST', '/traces-*/_search', {
+      size: 0,
+      query: {
+        bool: {
+          must: [
+            { term: { 'resource.attributes.service\\.name': service } }
+          ]
+        }
+      },
+      aggs: {
+        operations: {
+          terms: {
+            field: 'name',
+            size: 1000
+          }
+        }
+      }
+    });
+    
+    return response.aggregations?.operations?.buckets?.map((bucket: any) => bucket.key) || [];
+  }
+}
