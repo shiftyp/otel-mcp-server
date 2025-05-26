@@ -45,11 +45,19 @@ export function registerMetricTools(server: McpServer, esAdapter: ElasticsearchA
           fieldTypeMap.set(field.name, field.type);
         });
         
+        // Log the field types for debugging
+        logger.debug('[MCP TOOL] searchMetricsFields field types', { 
+          fieldCount: metricFields.length,
+          sampleFields: metricFields.slice(0, 5)
+        });
+        
         // Get co-occurring fields information
         const { fields: allFields, coOccurrences } = await otelMetricsTools.getAllMetricFields(args.search, serviceFilter, args.useSourceDocument);
         
         // Filter fields based on search term if provided
-        let filteredFields = allFields.filter(fieldName => fieldTypeMap.has(fieldName));
+        // Note: We want to keep the full dot delimited paths, but we need to match with the field types
+        // which might only have the last part of the path
+        let filteredFields = allFields;
         if (args.search && args.search.trim() !== '') {
           const searchTerm = args.search.toLowerCase();
           filteredFields = filteredFields.filter(fieldName => fieldName.toLowerCase().includes(searchTerm));
@@ -57,16 +65,26 @@ export function registerMetricTools(server: McpServer, esAdapter: ElasticsearchA
         
         // Format the output with schema information
         const fieldsPromises = filteredFields.map(async (fieldName) => {
-          // Get the actual datatype from Elasticsearch
-          const type = fieldTypeMap.get(fieldName) || 'unknown';
+          // Extract the last part of the field name to match with the field types
+          const lastPart = fieldName.split('.').pop() || fieldName;
+          
+          // Try to get the type from the full path first, then fall back to the last part
+          let type = fieldTypeMap.get(fieldName) || fieldTypeMap.get(lastPart) || 'unknown';
           
           // Create the schema object with the actual type
           const schema = type !== 'unknown' ? { type } : {};
           
-          // We no longer need to detect metric type as we're removing that information from the output
+          // Log for debugging
+          logger.debug('[MCP TOOL] Processing field', { 
+            fieldName, 
+            lastPart, 
+            type,
+            hasFullPath: fieldTypeMap.has(fieldName),
+            hasLastPart: fieldTypeMap.has(lastPart)
+          });
           
           return {
-            name: fieldName,
+            name: fieldName, // Keep the full dot delimited path
             type, // This is the actual datatype from Elasticsearch
             schema, // This is the actual schema from Elasticsearch
             count: 0, // We don't have count information for metrics

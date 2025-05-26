@@ -25,10 +25,21 @@ export function extractMetricFieldPaths(props: Record<string, any>, prefix: stri
   for (const field in props) {
     if (ignoreFields.has(field)) continue;
     const fieldType = props[field]?.type || (props[field]?.properties ? 'object' : 'unknown');
-    if (fieldType === 'object') {
-      fieldPaths.push(...extractMetricFieldPaths(props[field].properties, `${prefix}${field}.`));
-    } else {
-      fieldPaths.push(`${prefix}${field}`);
+    
+    // Always include the full path for this field
+    const fullPath = `${prefix}${field}`;
+    
+    // For non-object fields, add the field path
+    if (fieldType !== 'object') {
+      fieldPaths.push(fullPath);
+    }
+    
+    // For object fields, recursively process nested fields
+    if (fieldType === 'object' && props[field].properties) {
+      // Add the parent object path as well
+      fieldPaths.push(fullPath);
+      // Add all nested fields
+      fieldPaths.push(...extractMetricFieldPaths(props[field].properties, `${fullPath}.`));
     }
   }
 
