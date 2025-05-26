@@ -237,10 +237,10 @@ The OTEL MCP Server includes powerful visualization capabilities through the `ge
 
 ### Incident Timeline
 
-Generate a chronological view of events during an incident:
+Show a chronological view of events during an incident:
 
 ```javascript
-// Create an incident timeline for the last hour
+// Generate an incident timeline for multiple services
 mcp0_generateMarkdownVisualizations({
   "config": {
     "timeRange": {
@@ -291,8 +291,7 @@ mcp0_logsTable({
     "start": "now-1h",
     "end": "now"
   },
-  "maxRows": 3,
-  "fields": ["Resource.service.name"]
+  "maxRows": 3
 })
 
 // Method 2: Using the markdown visualizations tool
@@ -305,7 +304,7 @@ mcp0_generateMarkdownVisualizations({
     "config": {
       "type": "logs-table",
       "maxRows": 3,
-      "fields": ["timestamp", "service", "level", "message", "Resource.service.name"],
+      "fields": ["timestamp", "service", "level", "message"],
       "includeTraceLinks": true,
       "services": ["payment", "checkout", "inventory"] // Optional: filter to specific services
     }
@@ -315,14 +314,47 @@ mcp0_generateMarkdownVisualizations({
 
 **Example Output:**
 
-| Timestamp | Service | Level | Message | Trace ID | Resource.service.name |
-|-----------|---------|-------|---------|----------|----------------------|
-| 2025-05-25 22:52:52 | payment-service | ERROR | Failed to process payment for order #12345: Invalid credit card number | [f8a91c2d...](trace:f8a91c2d7b3e6a5f4c9d8e7b6a5f4c9d) | payment-service |
-| 2025-05-25 22:52:49 | frontend-proxy | INFO | [2025-05-25T22:52:49.152Z] "GET /api/cart HTTP/1.1" 200 - via_upstream - "-" 0 24 2 2 "-" "python... | [01366d98...](trace:01366d986ed8a49882444b1569c938e0) | frontend-proxy |
-| 2025-05-25 22:52:47 | accounting | INFORMATION | Order details: {@OrderResult}. | - | accounting |
-| 2025-05-25 22:52:47 | fraud-detection | INFO | Consumed record with orderId: fa1d0a10-39ba-11f0-9877-debf89339049, and updated total count to: 1... | [ac36a9f5...](trace:ac36a9f58dbced6d24d8e3b141675301) | fraud-detection |
+| timestamp | service | level | message | trace_id |
+| --- | --- | --- | --- | --- |
+| 2025-05-25 22:52:49 | frontend-proxy | INFO | [2025-05-25T22:52:49.152Z] "GET /api/cart HTTP/1.1" 200 - via_upstream - "-" 0 24 2 2 "-" "python... | [01366d98...](trace:01366d986ed8a49882444b1569c938e0) |
+| 2025-05-25 22:52:47 | accounting | INFORMATION | Order details: {@OrderResult}. | - |
+| 2025-05-25 22:52:47 | fraud-detection | INFO | Consumed record with orderId: fa1d0a10-39ba-11f0-9877-debf89339049, and updated total count to: 1... | [ac36a9f5...](trace:ac36a9f58dbced6d24d8e3b141675301) |
 
 *Showing 3 of 100 logs. Use maxRows parameter to adjust.*
+
+### Logs Table
+
+Display logs in a tabular format with customizable fields:
+
+```javascript
+// Generate a logs table with custom fields
+mcp0_generateMarkdownVisualizations({
+  "config": {
+    "timeRange": {
+      "start": "now-1h",
+      "end": "now"
+    },
+    "config": {
+      "type": "logs-table",
+      "maxRows": 5,
+      "fields": ["timestamp", "service", "level", "message"],
+      "includeTraceLinks": true
+    }
+  }
+})
+```
+
+**Example Output:**
+
+| timestamp | service | level | message | trace_id |
+| --- | --- | --- | --- | --- |
+| 2025-05-25 22:52:49 | frontend-proxy | INFO | [2025-05-25T22:52:49.152Z] "GET /api/cart HTTP/1.1" 200 - via_upstream - "-" 0 24 2 2 "-" "python... | [01366d98...](trace:01366d986ed8a49882444b1569c938e0) |
+| 2025-05-25 22:52:47 | accounting | INFORMATION | Order details: {@OrderResult}. | - |
+| 2025-05-25 22:52:47 | fraud-detection | INFO | Consumed record with orderId: fa1d0a10-39ba-11f0-9877-debf89339049, and updated total count to: 1... | [ac36a9f5...](trace:ac36a9f58dbced6d24d8e3b141675301) |
+| 2025-05-25 22:52:47 | currency | INFO | Convert conversion successful | [ac36a9f5...](trace:ac36a9f58dbced6d24d8e3b141675301) |
+| 2025-05-25 22:52:47 | quote | INFO | Calculated quote | [ac36a9f5...](trace:ac36a9f58dbced6d24d8e3b141675301) |
+
+*Showing 5 of 100 logs. Use maxRows parameter to adjust.*
 
 ### XY Charts
 
@@ -355,7 +387,7 @@ mcp0_generateMarkdownVisualizations({
 Show the distribution of values for a specific field:
 
 ```javascript
-// Generate a pie chart showing distribution of HTTP status codes
+// Generate a pie chart showing distribution of service names
 mcp0_generateMarkdownVisualizations({
   "config": {
     "timeRange": {
@@ -364,13 +396,30 @@ mcp0_generateMarkdownVisualizations({
     },
     "config": {
       "type": "field-distribution-pie",
-      "field": "http.status_code",
-      "dataType": "traces",
+      "field": "Resource.service.name",
+      "dataType": "logs",
       "maxSlices": 10,
       "showData": true
     }
   }
 })
+```
+
+**Example Output:**
+
+```mermaid
+pie showData
+    title Distribution of Resource.service.name
+    "load-generator" : 800
+    "kafka" : 81
+    "frontend-proxy" : 48
+    "cart" : 22
+    "recommendation" : 9
+    "currency" : 6
+    "accounting" : 4
+    "fraud-detection" : 4
+    "quote" : 4
+    "ad" : 2
 ```
 
 ### Error Distribution Pie Chart
@@ -428,6 +477,55 @@ Visualize the relationships and call patterns between services:
 mcp0_generateMarkdownVisualizations({
   "config": {
     "timeRange": {
+      "start": "now-6h",
+      "end": "now"
+    },
+    "config": {
+      "type": "service-dependency",
+      "query": "Resource.service.name:payment" // Optional: filter to focus on specific services
+    }
+  }
+})
+```
+
+**Example Output:**
+
+```mermaid
+graph TD
+  A["checkout"]
+  B["frontend"]
+  C["flagd"]
+  D["shipping"]
+  E["cart"]
+  F["currency"]
+  G["frontend-proxy"]
+  H["payment"]
+  I["product-catalog"]
+  J["fraud-detection"]
+  K["load-generator"]
+  L["email"]
+  M["recommendation"]
+  N["ad"]
+  A --> |2 calls| B
+  A --> |4 calls| C
+  A --> |2 calls| D
+  A --> |4 calls| E
+  A --> |2 calls| F
+  A --> |2 calls| G
+  A --> |2 calls| H
+  A --> |4 calls| I
+  A --> |3 calls| J
+  A --> |4 calls| K
+  A --> |2 calls| L
+  # (Showing partial graph for readability)
+```
+
+
+```javascript
+// Generate a service dependency graph
+mcp0_generateMarkdownVisualizations({
+  "config": {
+    "timeRange": {
       "start": "now-24h",
       "end": "now"
     },
@@ -465,17 +563,55 @@ graph TD
 Visualize the relationships between services during an incident:
 
 ```javascript
-// Generate an incident graph
+// Generate an incident graph showing service error relationships
 mcp0_generateMarkdownVisualizations({
   "config": {
     "timeRange": {
-      "start": "now-1h",
+      "start": "now-30d",
+      "end": "now"
+    },
+    "config": {
+      "type": "incident-graph"
+      // Optional parameters:
+      // "service": "frontend", // Focus on a specific service
+      // "query": "level:error" // Filter by query
+    }
+  }
+})
+```
+
+**Example Output:**
+
+```mermaid
+flowchart TD
+  load_generator["load-generator\n181 errors"]
+  recommendation["recommendation\n144 errors"]
+  frontend_proxy["frontend-proxy\n81 errors"]
+  frontend["frontend\n86 errors"]
+  checkout["checkout\n6 errors"]
+  product_catalog["product-catalog\n2 errors"]
+  load_generator --> recommendation
+  recommendation --> frontend
+  frontend --> frontend_proxy
+  frontend_proxy --> checkout
+  checkout --> product_catalog
+
+  classDef error fill:#f96, stroke:#333, stroke-width:2px;
+  class load_generator,recommendation,frontend_proxy,frontend,checkout,product_catalog error;
+```
+
+```javascript
+// Generate an incident graph focused on a specific service with a query filter
+mcp0_generateMarkdownVisualizations({
+  "config": {
+    "timeRange": {
+      "start": "now-7d",
       "end": "now"
     },
     "config": {
       "type": "incident-graph",
-      "service": "payment",
-      "query": "severity:high"
+      "service": "frontend", // Focus on the frontend service
+      "query": "level:error OR severity:error" // Filter for errors only
     }
   }
 })
@@ -484,6 +620,42 @@ mcp0_generateMarkdownVisualizations({
 ### Span Gantt Chart
 
 Timeline visualization of spans in a distributed trace:
+
+```javascript
+// Generate a span gantt chart for a specific span
+mcp0_generateMarkdownVisualizations({
+  "config": {
+    "timeRange": {
+      "start": "now-7d",
+      "end": "now"
+    },
+    "config": {
+      "type": "span-gantt",
+      "spanId": "d97a9420de311bf1", // The span ID to visualize
+      "query": "service:frontend" // Optional: filter related spans
+    }
+  }
+})
+```
+
+**Example Output:**
+
+```mermaid
+gantt
+  dateFormat X
+  axisFormat %L ms
+  title Distributed Trace Timeline
+  %% Trace visualization chart
+  section frontend
+  GET :active, task_72ce9593, after 0ms, 187ms
+  GET /api/products/{productId} :active, task_36fed3a5, after 0ms, 186ms
+  executing api route (pages) /api/products/[productId] :active, task_d97a9420, after 0ms, 186ms
+  grpc.oteldemo.ProductCatalogService/GetProduct :active, task_2c928057, after 0ms, 186ms
+  section load-generator
+  GET :active, task_d99ac347, after 0ms, 188ms
+  section product-catalog
+  oteldemo.ProductCatalogService/GetProduct :active, task_1203c15e, after 0ms, 147ms
+```
 
 ```javascript
 // Generate a span Gantt chart for a specific trace
@@ -504,6 +676,41 @@ mcp0_generateMarkdownVisualizations({
 ### Markdown Table
 
 Tabular representation of OTEL data:
+
+```javascript
+// Generate a custom markdown table from trace data
+mcp0_generateMarkdownVisualizations({
+  "config": {
+    "timeRange": {
+      "start": "now-1h",
+      "end": "now"
+    },
+    "config": {
+      "type": "markdown-table",
+      "headers": ["Timestamp", "Service", "Operation", "Duration", "Status"],
+      "queryType": "traces",
+      "query": {
+        "match": {
+          "Resource.service.name": "payment"
+        }
+      },
+      "fieldMappings": ["@timestamp", "Resource.service.name", "name", "duration", "status.code"],
+      "maxRows": 5,
+      "alignment": ["left", "left", "left", "right", "center"]
+    }
+  }
+})
+```
+
+**Example Output:**
+
+| Timestamp | Service | Operation | Duration | Status |
+|:----------|:--------|:----------|--------:|:------:|
+| 2025-05-25 19:42:15 | payment | Process Payment | 235ms | OK |
+| 2025-05-25 19:41:32 | payment | Validate Card | 45ms | OK |
+| 2025-05-25 19:40:18 | payment | Process Payment | 1250ms | ERROR |
+| 2025-05-25 19:39:55 | payment | Validate Card | 52ms | OK |
+| 2025-05-25 19:38:41 | payment | Process Refund | 187ms | OK |
 
 ```javascript
 // Generate a markdown table of trace data
@@ -528,6 +735,34 @@ mcp0_generateMarkdownVisualizations({
 ### Metrics Time Series Table
 
 Tabular representation of metrics over time intervals:
+
+```javascript
+// Generate a metrics time series table
+mcp0_generateMarkdownVisualizations({
+  "config": {
+    "timeRange": {
+      "start": "now-3h",
+      "end": "now"
+    },
+    "config": {
+      "type": "metrics-time-series-table",
+      "metricField": "system.cpu.usage",
+      "services": ["payment", "checkout", "inventory"],
+      "intervalCount": 6,
+      "formatValue": "decimal2",
+      "query": "name:system.cpu.usage"
+    }
+  }
+})
+```
+
+**Example Output:**
+
+| Service | 17:00 | 17:30 | 18:00 | 18:30 | 19:00 | 19:30 |
+|---------|-------|-------|-------|-------|-------|-------|
+| payment | 45.32 | 48.75 | 52.18 | 87.95 | 92.33 | 65.47 |
+| checkout | 32.15 | 35.42 | 38.67 | 42.18 | 40.25 | 38.92 |
+| inventory | 28.75 | 30.12 | 32.45 | 35.18 | 33.92 | 31.47 |
 
 ```javascript
 // Generate a metrics time series table

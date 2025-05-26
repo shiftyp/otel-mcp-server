@@ -1,6 +1,18 @@
-import { logger } from '../../utils/logger.js';
 import type { MCPToolOutput } from '../../types.js';
 import { ElasticsearchAdapter } from '../../adapters/elasticsearch/index.js';
+import { logger } from '../../utils/logger.js';
+
+interface ErrorResponse {
+  error: string;
+  count: number;
+  service?: string;
+  level?: string;
+  timestamp?: string;
+  trace_id?: string;
+  span_id?: string;
+  // Additional fields we'll use if available
+  related_services?: string[];
+}
 
 /**
  * Tool for extracting an incident subgraph from OTEL traces and service dependencies.
@@ -14,14 +26,14 @@ export class IncidentGraphTool {
   }
 
   /**
-   * Extracts the incident subgraph for a given time window and (optionally) service.
-   * Nodes: services or spans involved in errors/anomalies
-   * Edges: dependency/call relationships between affected nodes
-   *
-   * @param startTime ISO8601 start of incident window
-   * @param endTime ISO8601 end of incident window
-   * @param service (optional) focus on a single service
-   * @returns MCPToolOutput with the incident graph visualization
+   * Extract an incident subgraph from OTEL traces and service dependencies.
+   * This identifies affected nodes and edges based on error filters.
+   * 
+   * @param startTime Start time in ISO format
+   * @param endTime End time in ISO format
+   * @param service Optional service name to focus on
+   * @param query Optional query string to filter incidents
+   * @returns Mermaid diagram of the incident graph
    */
   async extractIncidentGraph(
     startTime: string, 
@@ -29,256 +41,217 @@ export class IncidentGraphTool {
     service?: string,
     query?: string
   ): Promise<MCPToolOutput> {
-    // 1. Get all spans in the window (optionally filter by service)
-    const must: any[] = [
-      {
-        range: {
-          '@timestamp': {
-            gte: startTime,
-            lte: endTime,
-            format: 'strict_date_optional_time'
+    try {
+      // Use the topErrors functionality to get the top errors
+      const limit = 100; // Get a large number of errors to build a comprehensive graph
+      
+      // Query the errors index using the adapter with proper parameters
+      const errorResponse = await this.esAdapter.topErrors(
+        startTime,  // Start time as string
+        endTime,    // End time as string
+        limit,      // Number of errors to return
+        service,    // Optional service filter
+        query       // Optional query pattern
+      );
+      
+      if (!errorResponse || !Array.isArray(errorResponse) || errorResponse.length === 0) {
+        // No errors found
+        logger.info('[IncidentGraphTool] No errors found in the specified time range');
+        return { 
+          content: [
+            { type: 'text', text: '```mermaid\nflowchart TD\n```\n\nNo errors found in the specified time range.' }
+          ] 
+        };
+      }
+      
+      // Extract service information and error counts from the response
+      const serviceErrorCounts = new Map<string, number>();
+      
+      // Also try to find related services from trace data if available
+      const serviceRelationships = new Map<string, Set<string>>();
+      
+      // Process each error to build the graph
+      for (const error of errorResponse) {
+        const service = error.service || 'unknown';
+        
+        // Count errors per service
+        serviceErrorCounts.set(service, (serviceErrorCounts.get(service) || 0) + error.count);
+        
+        // If the error has a trace_id, try to find related services
+        if (error.trace_id) {
+          // We'll need to query for this trace to get related services
+          try {
+            const traceQuery = {
+              query: {
+                bool: {
+                  must: [
+                    { term: { 'trace.id': error.trace_id } }
+                  ]
+                }
+              },
+              size: 100,
+              _source: ['resource.service.name', 'Resource.service.name', 'service.name']
+            };
+            
+            // Query for spans in this trace
+            const traceResponse = await this.esAdapter.queryTraces(traceQuery);
+            const traceSpans = traceResponse.hits?.hits?.map((h: any) => h._source) || [];
+            
+            // Extract unique services from the trace
+            const servicesInTrace = new Set<string>();
+            for (const span of traceSpans) {
+              const spanService = 
+                span['resource.service.name'] || 
+                span['Resource.service.name'] || 
+                span['service.name'] || 
+                'unknown';
+              
+              if (spanService !== 'unknown') {
+                servicesInTrace.add(spanService);
+              }
+            }
+            
+            // If we found multiple services, create relationships
+            if (servicesInTrace.size > 1) {
+              // Make sure the error service is in the set
+              if (service !== 'unknown') {
+                servicesInTrace.add(service);
+              }
+              
+              // Create relationships between all services in the trace
+              const serviceArray = Array.from(servicesInTrace);
+              for (let i = 0; i < serviceArray.length; i++) {
+                const fromService = serviceArray[i];
+                
+                // Initialize the set of related services if needed
+                if (!serviceRelationships.has(fromService)) {
+                  serviceRelationships.set(fromService, new Set<string>());
+                }
+                
+                // Add relationships to other services in the trace
+                for (let j = 0; j < serviceArray.length; j++) {
+                  if (i !== j) {
+                    const toService = serviceArray[j];
+                    serviceRelationships.get(fromService)?.add(toService);
+                  }
+                }
+              }
+            }
+          } catch (traceError) {
+            logger.warn('[IncidentGraphTool] Error querying trace', { 
+              trace_id: error.trace_id, 
+              error: traceError 
+            });
           }
         }
       }
-    ];
-    
-    // Add service filter if provided - support multiple service name field patterns
-    if (service) {
-      must.push({
-        bool: {
-          should: [
-            { term: { 'Resource.service.name': service } },
-            { term: { 'resource.attributes.service.name': service } },
-            { term: { 'service.name': service } }
-          ],
-          minimum_should_match: 1
-        }
-      });
-    }
-    
-    // Add custom query if provided
-    if (query) {
-      must.push({
-        query_string: {
-          query: query
-        }
-      });
-    }
-    
-    // Add filter for error spans
-    const errorFilter = {
-      bool: {
-        should: [
-          // OTEL spec status codes
-          { term: { 'Status.code': 'ERROR' } },
-          { term: { 'TraceStatus': 2 } }, // 2 = ERROR in OTEL
+      
+      // If we couldn't find any service relationships, try to infer them from error patterns
+      if (serviceRelationships.size === 0 && serviceErrorCounts.size > 1) {
+        // Create a simple chain of services based on error counts
+        const sortedServices = Array.from(serviceErrorCounts.entries())
+          .sort((a, b) => b[1] - a[1]) // Sort by error count, descending
+          .map(entry => entry[0]);
+        
+        // Create a chain of services
+        for (let i = 0; i < sortedServices.length - 1; i++) {
+          const fromService = sortedServices[i];
+          const toService = sortedServices[i + 1];
           
-          // Error events
-          { exists: { field: 'Events.exception' } },
+          // Initialize the set of related services if needed
+          if (!serviceRelationships.has(fromService)) {
+            serviceRelationships.set(fromService, new Set<string>());
+          }
           
-          // Error attributes
-          { exists: { field: 'Attributes.error' } }
-        ],
-        minimum_should_match: 1
-      }
-    };
-    must.push(errorFilter);
-    
-    // Query for error spans
-    const esQuery = {
-      size: 10000,
-      query: { bool: { must } },
-      _source: [
-        // Support multiple field patterns for span data
-        'SpanId', 'span_id', 'span.id',
-        'ParentSpanId', 'parent_span_id', 'parent.span.id',
-        'Resource.service.name', 'resource.attributes.service.name', 'service.name',
-        'TraceStatus', 'Status.code', 'status.code',
-        'Events.exception', 'Attributes.error',
-        'Name', 'name',
-        '@timestamp'
-      ]
-    };
-    
-    // Execute the query
-    const response = await this.esAdapter.queryTraces(esQuery);
-    const spans = response.hits?.hits?.map((h: any) => h._source) || [];
-
-    // 2. Identify affected nodes (spans/services with errors or anomalies)
-    // All spans from the query are already error spans due to our filter
-    const affectedSpans = spans;
-    
-    // Extract span IDs using multiple possible field names
-    const affectedSpanIds = new Set(
-      affectedSpans.map((s: any) => s.SpanId || s.span_id || s['span.id'])
-    );
-    
-    // Extract service names using multiple possible field names
-    const affectedServices = new Set(
-      affectedSpans.map((s: any) => 
-        s['Resource.service.name'] || 
-        s['resource.attributes.service.name'] || 
-        s['service.name'] || 
-        'unknown'
-      )
-    );
-
-    // 3. Build nodes and edges for subgraph
-    const nodes: any[] = [];
-    const edges: any[] = [];
-    const nodeIds = new Set();
-    
-    for (const span of affectedSpans) {
-      // Extract span ID using multiple possible field names
-      const nodeId = span.SpanId || span.span_id || span['span.id'];
-      if (!nodeId) continue; // Skip if no valid span ID
-      
-      if (!nodeIds.has(nodeId)) {
-        // Extract service name using multiple possible field names
-        const service = 
-          span['Resource.service.name'] || 
-          span['resource.attributes.service.name'] || 
-          span['service.name'] || 
-          'unknown';
-        
-        // Extract span name using multiple possible field names
-        const name = span.Name || span.name || 'unknown operation';
-        
-        // Extract error status using multiple possible field names
-        const status = 
-          span.TraceStatus || 
-          span['Status.code'] || 
-          span['status.code'] || 
-          'ERROR';
-        
-        // Extract error details
-        const statusMessage = 
-          (span.Events?.exception?.exception?.message) || 
-          (span.Events?.exception?.exception?.type) || 
-          (span.Attributes?.error) || 
-          'Error detected';
-        
-        nodes.push({
-          id: nodeId,
-          service,
-          name,
-          status,
-          statusMessage,
-          timestamp: span['@timestamp']
-        });
-        nodeIds.add(nodeId);
+          // Add the relationship
+          serviceRelationships.get(fromService)?.add(toService);
+        }
       }
       
-      // Extract parent span ID using multiple possible field names
-      const parentSpanId = 
-        span.ParentSpanId || 
-        span.parent_span_id || 
-        span['parent.span.id'];
+      // Generate the mermaid diagram
+      const mermaidDiagram = this.generateMermaidDiagram(serviceErrorCounts, serviceRelationships);
       
-      // Add edge from parent if parent is also affected
-      if (parentSpanId && affectedSpanIds.has(parentSpanId)) {
-        edges.push({
-          from: parentSpanId,
-          to: nodeId,
-          type: 'span',
-        });
-      }
+      return { 
+        content: [
+          { type: 'text', text: '```mermaid\n' + mermaidDiagram + '\n```' }
+        ] 
+      };
+    } catch (error) {
+      logger.error('[IncidentGraphTool] Error generating incident graph', { error });
+      return { 
+        content: [
+          { type: 'text', text: `Error generating incident graph: ${error instanceof Error ? error.message : String(error)}` }
+        ] 
+      };
     }
-
-    const result = {
-      nodes,
-      edges,
-      affectedServices: Array.from(affectedServices),
-      mermaid: this.toIncidentMermaid(nodes, edges)
-    };
-
-    // Create a markdown representation with the mermaid diagram
-    const markdown = '```mermaid\n' + result.mermaid + '\n```\n\n';
-    
-    return { 
-      content: [
-        { type: 'text', text: markdown }
-      ] 
-    };
   }
 
   /**
-   * Convert incident graph nodes/edges to mermaid flowchart syntax.
-   * Canonical edge fields: edge.from, edge.to; optionally edge.label.
+   * Generate a mermaid diagram from service error counts and relationships
    */
-  private toIncidentMermaid(nodes: any[], edges: any[]): string {
+  private generateMermaidDiagram(
+    serviceErrorCounts: Map<string, number>,
+    serviceRelationships: Map<string, Set<string>>
+  ): string {
     const mermaidLines = ["flowchart TD"];
     
-    // Create maps for deduplication
-    const nodeIdMap = new Map(); // Original node ID to Mermaid node ID
-    const labelToNodeId = new Map(); // Display label to Mermaid node ID
-    const nodeIdToCount = new Map(); // Track number of occurrences for each node type
-    let nodeCounter = 1;
+    // Create nodes for each service with error count
+    for (const [service, errorCount] of serviceErrorCounts.entries()) {
+      // Create a sanitized service name for the node ID (remove special chars)
+      const safeServiceName = service.replace(/[^a-zA-Z0-9]/g, '_').toLowerCase();
+      
+      // Create a node for this service with error count
+      mermaidLines.push(`  ${safeServiceName}["${service}\n${errorCount} errors"]`);
+    }
     
-    // First pass: group similar nodes by their display label
-    for (const node of nodes) {
-      const service = node.service || '';
-      const name = node.name || '';
+    // Add service-level edges with counts
+    const edgeCounts = new Map<string, number>();
+    
+    // Count edges between services
+    for (const [fromService, toServices] of serviceRelationships.entries()) {
+      // Create sanitized service name
+      const fromServiceId = fromService.replace(/[^a-zA-Z0-9]/g, '_').toLowerCase();
       
-      // Create a display label with the service and name
-      const displayLabel = service ? `${service}#58;${name}` : name;
-      
-      // Check if we've already seen this label
-      if (labelToNodeId.has(displayLabel)) {
-        // Reuse the existing node ID for this label
-        const existingNodeId = labelToNodeId.get(displayLabel);
-        nodeIdMap.set(node.id, existingNodeId);
+      for (const toService of toServices) {
+        // Skip if we don't have error data for this service
+        if (!serviceErrorCounts.has(toService)) continue;
         
-        // Increment the count for this node type
-        const currentCount = nodeIdToCount.get(displayLabel) || 1;
-        nodeIdToCount.set(displayLabel, currentCount + 1);
-      } else {
-        // Create a new node ID for this label
-        const nodeId = `node${nodeCounter++}`;
-        labelToNodeId.set(displayLabel, nodeId);
-        nodeIdMap.set(node.id, nodeId);
-        nodeIdToCount.set(displayLabel, 1);
-      }
-    }
-    
-    // Second pass: define deduplicated nodes with counts
-    for (const [displayLabel, nodeId] of labelToNodeId.entries()) {
-      const count = nodeIdToCount.get(displayLabel) || 1;
-      // Only show count if more than 1
-      const labelWithCount = count > 1 ? `${displayLabel} (${count})` : displayLabel;
-      mermaidLines.push(`  ${nodeId}["${labelWithCount}"]`);
-    }
-    
-    // Track edges to deduplicate them
-    const edgeMap = new Map();
-    
-    // Now add all the edges using the node IDs (deduplicated)
-    for (const edge of edges) {
-      const fromNodeId = nodeIdMap.get(edge.from) || `unknown_${edge.from}`;
-      const toNodeId = nodeIdMap.get(edge.to) || `unknown_${edge.to}`;
-      
-      // Skip self-loops
-      if (fromNodeId === toNodeId) continue;
-      
-      // Create a unique key for this edge
-      const edgeKey = `${fromNodeId}->${toNodeId}`;
-      
-      // Check if we've already seen this edge
-      if (edgeMap.has(edgeKey)) {
+        // Create sanitized service name
+        const toServiceId = toService.replace(/[^a-zA-Z0-9]/g, '_').toLowerCase();
+        
+        // Skip self-loops
+        if (fromServiceId === toServiceId) continue;
+        
+        // Create a unique key for this edge
+        const edgeKey = `${fromServiceId}->${toServiceId}`;
+        
         // Increment the count for this edge
-        const currentCount = edgeMap.get(edgeKey);
-        edgeMap.set(edgeKey, currentCount + 1);
-      } else {
-        // Add this as a new edge
-        edgeMap.set(edgeKey, 1);
+        edgeCounts.set(edgeKey, (edgeCounts.get(edgeKey) || 0) + 1);
       }
     }
     
-    // Add deduplicated edges with counts
-    for (const [edgeKey, count] of edgeMap.entries()) {
-      const [fromNodeId, toNodeId] = edgeKey.split('->');
+    // Add edges to the diagram
+    for (const [edgeKey, count] of edgeCounts.entries()) {
+      const [fromServiceId, toServiceId] = edgeKey.split('->');
+      
+      // Add a label for the edge if there are multiple calls
       let label = count > 1 ? `|"${count} calls"|` : '';
-      mermaidLines.push(`  ${fromNodeId} -->${label} ${toNodeId}`);
+      
+      // Add the edge to the mermaid diagram
+      mermaidLines.push(`  ${fromServiceId} -->${label} ${toServiceId}`);
+    }
+    
+    // Add styling for error nodes
+    mermaidLines.push('');
+    mermaidLines.push('  classDef error fill:#f96, stroke:#333, stroke-width:2px;');
+    
+    // Apply the error class to all service nodes
+    const serviceList = Array.from(serviceErrorCounts.keys())
+      .map(service => service.replace(/[^a-zA-Z0-9]/g, '_').toLowerCase())
+      .join(',');
+    
+    if (serviceList) {
+      mermaidLines.push(`  class ${serviceList} error;`);
     }
     
     return mermaidLines.join('\n');
