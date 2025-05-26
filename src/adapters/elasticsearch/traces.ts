@@ -208,10 +208,9 @@ export class TracesAdapter extends ElasticsearchCore {
         ];
       }
       
-      // Try a different approach - use aggregations to find service pairs
-      // This is more efficient and doesn't require multiple passes
+      // Get spans with parent-child relationships to build accurate service dependencies
       const response = await this.request('POST', '/traces-*/_search', {
-        size: 0,
+        size: 10000, // Get a significant number of spans to analyze
         query: {
           bool: {
             must: [
@@ -222,61 +221,149 @@ export class TracesAdapter extends ElasticsearchCore {
                     lte: endTime
                   }
                 }
+              },
+              {
+                exists: {
+                  field: 'ParentSpanId.keyword' // Only get spans with parent relationships
+                }
               }
             ]
           }
         },
-        aggs: {
-          traces: {
-            terms: {
-              field: 'TraceId.keyword',
-              size: 1000 // Get the top 1000 traces
-            },
-            aggs: {
-              services: {
-                terms: {
-                  field: 'Resource.service.name.keyword',
-                  size: 100 // Get up to 100 services per trace
-                }
-              }
-            }
-          }
-        }
+        _source: [
+          'Resource.service.name',
+          'ParentSpanId',
+          'SpanId',
+          'TraceId',
+          'Status.code'
+        ]
       });
       
-      // Process the aggregation results
-      const traceBuckets = response.aggregations?.traces?.buckets || [];
-      logger.info(`[ES Adapter] Found ${traceBuckets.length} traces with service information`);
-      
       // Map to track service relationships and counts
-      const serviceRelationships = new Map<string, Map<string, { count: number, errors: number }>>(); 
+      const serviceRelationships = new Map<string, Map<string, { count: number, errors: number }>>();
       
-      // For each trace, find all service pairs
-      for (const traceBucket of traceBuckets) {
-        const serviceBuckets = traceBucket.services?.buckets || [];
-        const services = serviceBuckets.map((bucket: any) => bucket.key);
-        
-        // If we have multiple services in a trace, they are related
-        if (services.length > 1) {
-          // Create relationships between all services in the trace
-          for (let i = 0; i < services.length; i++) {
-            for (let j = i + 1; j < services.length; j++) {
-              const service1 = services[i];
-              const service2 = services[j];
+      // Map to track span IDs to their service names
+      const spanIdToService = new Map<string, string>();
+      
+      // First pass: collect all span IDs and their service names
+      if (response.hits?.hits) {
+        for (const hit of response.hits.hits) {
+          const source = hit._source;
+          const spanId = source.SpanId;
+          const service = this.extractServiceName(source);
+          
+          if (spanId && service) {
+            spanIdToService.set(spanId, service);
+          }
+        }
+      }
+      
+      // Second pass: build service relationships based on parent-child span relationships
+      if (response.hits?.hits) {
+        for (const hit of response.hits.hits) {
+          const source = hit._source;
+          const childSpanId = source.SpanId;
+          const parentSpanId = source.ParentSpanId;
+          const childService = this.extractServiceName(source);
+          
+          // Check if this span has an error
+          const hasError = source.Status?.code === 2; // 2 = ERROR in OTEL
+          
+          // If we know both the parent span's service and this span's service
+          if (parentSpanId && childService && spanIdToService.has(parentSpanId)) {
+            const parentService = spanIdToService.get(parentSpanId)!;
+            
+            // Only create a relationship if the services are different
+            if (parentService !== childService) {
+              // Add the relationship from parent to child
+              if (!serviceRelationships.has(parentService)) {
+                serviceRelationships.set(parentService, new Map());
+              }
               
-              // Add relationship in both directions
-              this.addServiceRelationship(serviceRelationships, service1, service2);
-              this.addServiceRelationship(serviceRelationships, service2, service1);
+              const parentMap = serviceRelationships.get(parentService)!;
+              if (!parentMap.has(childService)) {
+                parentMap.set(childService, { count: 0, errors: 0 });
+              }
+              
+              const stats = parentMap.get(childService)!;
+              stats.count++;
+              if (hasError) {
+                stats.errors++;
+              }
             }
           }
         }
       }
       
-      // If we still don't have any relationships, try a fallback approach
+      // If we don't have enough relationships, try a fallback approach with trace-level service grouping
       if (serviceRelationships.size === 0) {
-        logger.info('[ES Adapter] No service relationships found, using fallback approach');
+        logger.info('[ES Adapter] No parent-child relationships found, using trace-level grouping fallback');
         
-        // Just get all services and create a simple chain
+        // Get traces and their services
+        const traceResponse = await this.request('POST', '/traces-*/_search', {
+          size: 0,
+          query: {
+            range: {
+              '@timestamp': {
+                gte: startTime,
+                lte: endTime
+              }
+            }
+          },
+          aggs: {
+            traces: {
+              terms: {
+                field: 'TraceId.keyword',
+                size: 1000
+              },
+              aggs: {
+                services: {
+                  terms: {
+                    field: 'Resource.service.name.keyword',
+                    size: 100
+                  }
+                }
+              }
+            }
+          }
+        });
+        
+        // Process the trace-level aggregation results
+        const traceBuckets = traceResponse.aggregations?.traces?.buckets || [];
+        
+        // For each trace, try to determine the flow of services
+        for (const traceBucket of traceBuckets) {
+          const serviceBuckets = traceBucket.services?.buckets || [];
+          const services = serviceBuckets.map((bucket: any) => bucket.key);
+          
+          if (services.length > 1) {
+            // Instead of connecting all services to each other,
+            // create a chain based on the order they appear in the bucket
+            // This is a heuristic but better than a fully connected graph
+            for (let i = 0; i < services.length - 1; i++) {
+              const service1 = services[i];
+              const service2 = services[i + 1];
+              
+              if (!serviceRelationships.has(service1)) {
+                serviceRelationships.set(service1, new Map());
+              }
+              
+              const serviceMap = serviceRelationships.get(service1)!;
+              if (!serviceMap.has(service2)) {
+                serviceMap.set(service2, { count: 0, errors: 0 });
+              }
+              
+              serviceMap.get(service2)!.count++;
+            }
+          }
+        }
+      }
+      
+      // If we still don't have any relationships, create a simple chain of all services
+      if (serviceRelationships.size === 0) {
+        logger.info('[ES Adapter] No relationships found, creating a simple chain of all services');
+        
+        // Get all services
         const servicesResponse = await this.request('POST', '/traces-*/_search', {
           size: 0,
           query: {
@@ -305,12 +392,21 @@ export class TracesAdapter extends ElasticsearchCore {
         // Create a simple chain of services
         if (services.length > 1) {
           for (let i = 0; i < services.length - 1; i++) {
-            this.addServiceRelationship(serviceRelationships, services[i], services[i + 1]);
+            if (!serviceRelationships.has(services[i])) {
+              serviceRelationships.set(services[i], new Map());
+            }
+            
+            const serviceMap = serviceRelationships.get(services[i])!;
+            if (!serviceMap.has(services[i + 1])) {
+              serviceMap.set(services[i + 1], { count: 1, errors: 0 });
+            }
           }
         } else if (services.length === 1) {
           // If we only have one service, create a self-reference
-          this.addServiceRelationship(serviceRelationships, services[0], 'External');
-          this.addServiceRelationship(serviceRelationships, 'External', services[0]);
+          if (!serviceRelationships.has(services[0])) {
+            serviceRelationships.set(services[0], new Map());
+          }
+          serviceRelationships.get(services[0])!.set('External', { count: 1, errors: 0 });
         } else {
           // If we still have no services, return a placeholder
           return [
@@ -355,6 +451,19 @@ export class TracesAdapter extends ElasticsearchCore {
         }
       ];
     }
+  }
+
+  /**
+   * Extract service name from various possible fields in a span
+   */
+  private extractServiceName(span: any): string {
+    // Try different possible locations for service name
+    return span['Resource.service.name'] || 
+           span?.Resource?.service?.name || 
+           span['resource.attributes.service.name'] || 
+           span?.resource?.attributes?.service?.name ||
+           span['service.name'] ||
+           'unknown';
   }
 
   /**
