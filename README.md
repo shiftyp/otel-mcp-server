@@ -418,17 +418,6 @@ mcp0_servicesGet({
 
 ```
 
-## 💻 Testing with OpenTelemetry Demo
-
-You can test OTEL MCP Server with the official [OpenTelemetry Demo](https://github.com/open-telemetry/opentelemetry-demo) to ingest and query real traces, metrics, and logs.
-
-### Setup Steps:
-
-1. **Deploy the OpenTelemetry Demo** (via Docker Compose or Kubernetes)
-2. **Configure Elasticsearch** as an exporter in the demo
-3. **Set environment variables** for OTEL MCP Server to connect to your Elasticsearch instance
-4. **Start the OTEL MCP Server** using `npm start` or `npx otel-mcp-server`
-
 ### Example Test Queries
 
 ```javascript
@@ -494,75 +483,6 @@ The OTEL MCP Server automatically adapts to the available data in your Elasticse
 - If log data is available, log query tools (`logsQuery`, `logFieldsGet`, `findLogs`) are registered
 
 This ensures that you only see tools that will work with your available data. If a particular telemetry type is not available, the corresponding tools will not be registered, preventing you from attempting to use tools that would fail.
-
-## 💡 Usage Examples
-
-Here are some practical examples of how to use the OTEL MCP Server in real-world scenarios:
-
-### Troubleshooting Service Errors
-
-```
-This API endpoint is returning 500 errors. Use the tracesQuery tool to find recent traces for this endpoint, then examine the error details.
-```
-
-```javascript
-// Find traces with errors in the API service
-mcp0_tracesQuery({
-  "query": {
-    "query": {
-      "bool": {
-        "must": [
-          { "term": { "service.name": "api" } },
-          { "term": { "status.code": "ERROR" } },
-          { "range": { "@timestamp": { "gte": "now-1h" } } }
-        ]
-      }
-    },
-    "size": 10,
-    "sort": [{ "@timestamp": "desc" }]
-  }
-})
-```
-
-### Investigating Performance Issues
-
-```
-The payment-service is showing high latency. Use the metricsQuery tool to find relevant metrics and identify any resource bottlenecks.
-```
-
-```javascript
-// Find high-latency metrics for the payment service
-mcp0_metricsQuery({
-  "query": {
-    "query": {
-      "bool": {
-        "must": [
-          { "term": { "service.name": "payment" } },
-          { "term": { "metric.name": "http.server.duration" } },
-          { "range": { "metric.value": { "gt": 1000 } } }
-        ]
-      }
-    },
-    "size": 10,
-    "sort": [{ "metric.value": "desc" }]
-  }
-})
-```
-
-## 💬 Contributing
-
-Contributions to the OTEL MCP Server are welcome! If you'd like to contribute:
-
-1. Fork the repository
-2. Create a feature branch
-3. Make your changes
-4. Submit a pull request
-
-## 🔒 License
-
-MIT
-
-Built with ❤️ for the OpenTelemetry community
 
 ## 🧪 Testing with the OTEL Demo
 
@@ -676,81 +596,6 @@ This makes it easier to debug issues and provide meaningful feedback to users.
    - If running in a container, ensure stdio is connected to your orchestrator.
 
 **See the `demo/` directory for ready-to-use config files for both Kubernetes and Docker Compose.**
-
-### Examples
-
-1. Query for traces:
-   ```json
-   {
-     "tool": "tracesQuery",
-     "params": {
-       "query": {
-         "query": {
-           "range": {
-             "@timestamp": {
-               "gte": "2023-01-01T00:00:00Z",
-               "lte": "2023-01-02T00:00:00Z"
-             }
-           }
-         },
-         "size": 10
-       }
-     }
-   }
-   ```
-
-2. Search for trace fields:
-   ```json
-   {
-     "tool": "traceFieldsGet",
-     "params": {
-       "search": "duration"
-     }
-   }
-   ```
-
-3. Search for log fields:
-   ```json
-   {
-     "tool": "logFieldsGet",
-     "params": {
-       "search": "message"
-     }
-   }
-   ```
-
-4. Find available metric fields:
-   ```json
-   {
-     "tool": "metricsFieldsGet",
-     "params": {
-       "search": "cpu"
-     }
-   }
-   ```
-
-5. Query metrics data:
-   ```json
-   {
-     "tool": "metricsQuery",
-     "params": {
-       "query": {
-         "query": { "match_all": {} },
-         "size": 10,
-         "sort": [{ "@timestamp": "desc" }]
-       }
-     }
-   }
-   ```
-
-6. List all services:
-   ```json
-   {
-     "tool": "servicesGet",
-     "params": {}
-   }
-   ```
-
 ## 🔍 Debugging
 
 Set the `DEBUG=1` environment variable to enable detailed logging:
@@ -782,7 +627,7 @@ All tools return structured error responses when issues occur. For example:
 - Detailed error messages
 - Connection details
 
-## 🤝 Contributing
+## 💬 Contributing
 
 Contributions to the OTEL MCP Server are welcome! If you'd like to contribute:
 
@@ -791,7 +636,9 @@ Contributions to the OTEL MCP Server are welcome! If you'd like to contribute:
 3. Make your changes
 4. Submit a pull request
 
-## 📝 License
+## 🔒 License
+
+Built with ❤️ for the OpenTelemetry community!
 
 This project is licensed under the MIT License - see the [LICENSE](LICENSE) file for details.
 
