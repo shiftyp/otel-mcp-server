@@ -169,7 +169,7 @@ All query tools support the following parameters:
 
 ## Example Prompts for LLMs
 
-This MCP Server has been tested extensively with the [Windsurf](https://windsurf.com/editor) editor and the OpenTelemetry Demo application. It was asked to generate an entire incident report based on the demo applications test features, along with issues injected by Chaos Mesh. This is the [process](https://www.dropbox.com/scl/fi/11lqbd5a9kzq4i9wls0wf/Recording-2025-05-26-153028.mp4?rlkey=zlornufflsekncdt0el9xkatu&st=2m6487ao&dl=0)and [end result](https://gist.github.com/shiftyp/ebb1cc49196ddffd04d8c9709eb01c54). Other more focused examples are provided below.
+This MCP Server has been tested extensively with the [Windsurf](https://windsurf.com/editor) editor and the OpenTelemetry Demo application. It was asked to generate an entire incident report based on the demo applications test features, along with issues injected by Chaos Mesh. This is the [process](https://www.dropbox.com/scl/fi/11lqbd5a9kzq4i9wls0wf/Recording-2025-05-26-153028.mp4?rlkey=zlornufflsekncdt0el9xkatu&st=2m6487ao&dl=0) and [end result](https://gist.github.com/shiftyp/ebb1cc49196ddffd04d8c9709eb01c54). Other more focused examples are provided below.
 
 ### Exploring Data Structure
 
