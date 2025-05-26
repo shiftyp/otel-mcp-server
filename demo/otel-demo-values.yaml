@@ -17,6 +17,16 @@ opentelemetry-collector:
         endpoint: http://elasticsearch-nginx-proxy:80
         # Configure timeout settings
         timeout: 90s
+        # Add mapping settings to handle nested objects
+        mapping:
+          mode: "dynamic"
+          dedot: true
+        # Configure retry settings
+        retry_on_failure:
+          enabled: true
+          initial_interval: 5s
+          max_interval: 30s
+          max_elapsed_time: 300s
       opensearch:
         http:
           endpoint: http://opensearch:9200
@@ -68,13 +78,6 @@ opentelemetry-collector:
         - action: insert
           from_attribute: k8s.pod.uid
           key: service.instance.id
-      transform:
-        error_mode: ignore
-        trace_statements:
-        - context: span
-          statements:
-          - replace_pattern(name, "\\?.*", "")
-          - replace_match(name, "GET /api/products/*", "GET /api/products/{productId}")
     receivers:
       httpcheck/frontend-proxy:
         targets:
