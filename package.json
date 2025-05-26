@@ -1,7 +1,10 @@
 {
   "name": "otel-mcp-server",
-  "version": "0.2.1",
+  "version": "0.2.3",
   "main": "dist/server.js",
+  "bin": {  
+    "otel-mcp-server": "./bin/otel-mcp-server"
+  },
   "scripts": {
     "start": "node dist/server.js",
     "build": "tsc",

@@ -1,0 +1,11 @@
+#!/usr/bin/env node
+
+/**
+ * OTEL MCP Server
+ * 
+ * This script serves as the executable entry point for the OTEL MCP Server
+ * when installed globally via npm.
+ */
+
+// Import and run the server
+require('../dist/server.js');
