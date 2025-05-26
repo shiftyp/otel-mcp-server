@@ -12,6 +12,9 @@
     "dev": "tsx watch src/server.ts",
     "prepublishOnly": "tsc --build --clean && tsc --build"
   },
+  "engines": {
+    "node": ">=20.0.0"
+  },
   "type": "module",
   "exports": {
     "./package.json": "./package.json"

@@ -8,4 +8,4 @@
  */
 
 // Import and run the server
-require('../dist/server.js');
+import '../dist/server.js';
