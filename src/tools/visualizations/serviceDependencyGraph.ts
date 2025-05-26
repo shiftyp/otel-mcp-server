@@ -70,29 +70,94 @@ export class ServiceDependencyGraphTool {
       const targetId = serviceIds.get(edge.child);
       
       if (sourceId && targetId) {
-        // Add error rate if available
+        // Add error rate if available with color coding based on error rate
         let label = '';
+        let edgeStyle = '';
+        
         if (edge.errorRate !== undefined) {
           const errorRateFormatted = (edge.errorRate * 100).toFixed(1) + '%';
-          label = ` |${edge.count} calls${edge.errorRate > 0 ? `, ${errorRateFormatted} errors` : ''}|`;
+          label = ` |${edge.count} calls`;
+          
+          // Add error information if there are errors
+          if (edge.errorRate > 0) {
+            label += `, ${errorRateFormatted} errors|`;
+            
+            // Add color coding based on error rate
+            if (edge.errorRate >= 0.5) { // >= 50% errors
+              edgeStyle = ' style stroke:red,stroke-width:2px';
+            } else if (edge.errorRate >= 0.2) { // >= 20% errors
+              edgeStyle = ' style stroke:orange,stroke-width:1.5px';
+            } else { // < 20% errors
+              edgeStyle = ' style stroke:#FF9900,stroke-width:1px';
+            }
+          } else {
+            label += '|';
+          }
         } else if (edge.count) {
           label = ` |${edge.count} calls|`;
         }
         
-        mermaidLines.push(`  ${sourceId} -->${label} ${targetId}`);
+        mermaidLines.push(`  ${sourceId} -->${label} ${targetId}${edgeStyle}`);
       }
     }
     
     // Add styling for services with errors
-    const errorServices = Array.from(serviceHasError.entries())
-      .filter(([_, hasError]) => hasError)
-      .map(([service, _]) => serviceIds.get(service))
-      .filter(id => id) // Filter out undefined IDs
-      .join(',');
+    // Track services with different error levels
+    const highErrorServices: string[] = [];
+    const mediumErrorServices: string[] = [];
+    const lowErrorServices: string[] = [];
     
-    if (errorServices) {
-      mermaidLines.push(`  class ${errorServices} error`);
+    // Calculate error rates per service
+    const serviceErrorRates = new Map<string, number>();
+    for (const edge of edges) {
+      if (edge.errorRate && edge.errorRate > 0) {
+        // Update parent service error rate
+        const parentId = serviceIds.get(edge.parent);
+        if (parentId) {
+          const currentRate = serviceErrorRates.get(edge.parent) || 0;
+          serviceErrorRates.set(edge.parent, Math.max(currentRate, edge.errorRate));
+        }
+        
+        // Update child service error rate
+        const childId = serviceIds.get(edge.child);
+        if (childId) {
+          const currentRate = serviceErrorRates.get(edge.child) || 0;
+          serviceErrorRates.set(edge.child, Math.max(currentRate, edge.errorRate));
+        }
+      }
     }
+    
+    // Categorize services by error rate
+    for (const [service, errorRate] of serviceErrorRates.entries()) {
+      const serviceId = serviceIds.get(service);
+      if (serviceId) {
+        if (errorRate >= 0.5) { // >= 50% errors
+          highErrorServices.push(serviceId);
+        } else if (errorRate >= 0.2) { // >= 20% errors
+          mediumErrorServices.push(serviceId);
+        } else { // < 20% errors
+          lowErrorServices.push(serviceId);
+        }
+      }
+    }
+    
+    // Add styling classes for different error levels
+    if (highErrorServices.length > 0) {
+      mermaidLines.push(`  class ${highErrorServices.join(',')} highError`);
+    }
+    
+    if (mediumErrorServices.length > 0) {
+      mermaidLines.push(`  class ${mediumErrorServices.join(',')} mediumError`);
+    }
+    
+    if (lowErrorServices.length > 0) {
+      mermaidLines.push(`  class ${lowErrorServices.join(',')} lowError`);
+    }
+    
+    // Add CSS styling for the error classes
+    mermaidLines.push('  classDef highError fill:#ffcccc,stroke:#ff0000,stroke-width:2px,color:#990000');
+    mermaidLines.push('  classDef mediumError fill:#fff2cc,stroke:#ff9900,stroke-width:1.5px,color:#cc7700');
+    mermaidLines.push('  classDef lowError fill:#fff9e6,stroke:#ffcc66,stroke-width:1px,color:#cc9900');
     
     const mermaid = mermaidLines.join('\n');
     
