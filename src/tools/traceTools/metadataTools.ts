@@ -53,8 +53,8 @@ export function registerTraceMetadataTools(server: McpServer, esAdapter: Elastic
         end: z.string().describe('End time in ISO 8601 format')
       }).describe('Time window for analysis'),
       limit: z.number().optional().default(10).describe('Maximum number of errors to return'),
-      service: z.string().optional().describe('Filter to errors from a specific service'),
-      services: z.array(z.string()).optional().describe('Filter to errors from multiple services (overrides service parameter)'),
+      service: z.string().optional().describe('Filter to errors from a specific service. Use servicesGet tool to find available services.'),
+      services: z.array(z.string()).optional().describe('Filter to errors from multiple services (overrides service parameter). Use servicesGet tool to find available services.'),
       pattern: z.string().optional().describe('Filter errors by text pattern')
     },
     async (args: any, extra: unknown) => {
@@ -174,8 +174,8 @@ export function registerTraceMetadataTools(server: McpServer, esAdapter: Elastic
     'traceFieldsGet',
     { 
       search: z.string().optional().describe('Filter fields by name pattern'),
-      service: z.string().optional().describe('Filter to fields from a specific service'),
-      services: z.array(z.string()).optional().describe('Filter to fields from multiple services (overrides service parameter)'),
+      service: z.string().optional().describe('Filter to fields from a specific service. Use servicesGet tool to find available services.'),
+      services: z.array(z.string()).optional().describe('Filter to fields from multiple services (overrides service parameter). Use servicesGet tool to find available services.'),
       includeSourceFields: z.boolean().optional().default(false).describe('Include source document fields in results')
     },
     async (args: { search?: string, service?: string, services?: string[], includeSourceFields?: boolean }, _extra: unknown) => {

@@ -20,8 +20,8 @@ export function registerMetricTools(server: McpServer, esAdapter: ElasticsearchA
     'searchMetricsFields',
     { 
       search: z.string().optional().describe('Search term to filter metric fields.'),
-      service: z.string().optional().describe('Service name (optional) - Filter fields to only those present in data from this service.'),
-      services: z.array(z.string()).optional().describe('Services array (optional) - Filter fields to only those present in data from these services. Takes precedence over service parameter if both are provided.'),
+      service: z.string().optional().describe('Service name (optional) - Filter fields to only those present in data from this service. Use servicesGet tool to find available services.'),
+      services: z.array(z.string()).optional().describe('Services array (optional) - Filter fields to only those present in data from these services. Takes precedence over service parameter if both are provided. Use servicesGet tool to find available services.'),
       useSourceDocument: z.boolean().optional().default(false).describe('Whether to include source document fields (default: false for metrics)')
     },
     async (args: { search?: string, service?: string, services?: string[], useSourceDocument?: boolean }, _extra: unknown) => {
@@ -111,7 +111,7 @@ export function registerMetricTools(server: McpServer, esAdapter: ElasticsearchA
       startTime: z.string().describe('Start time (ISO 8601) - The beginning of the metric aggregation window.'),
       endTime: z.string().describe('End time (ISO 8601) - The end of the metric aggregation window.'),
       metricField: z.string().optional().describe('Metric field (optional) - The metric field to aggregate. Use searchMetricsFields to get a list of available fields and their schemas.'),
-      service: z.string().optional().describe('Service name (optional) - The service whose metrics to aggregate. Use listServices to get a list of available services.')
+      service: z.string().optional().describe('Service name (optional) - The service whose metrics to aggregate. Use servicesGet tool to find available services.')
     },
     async (args: { startTime: string, endTime: string, metricField?: string, service?: string }) => {
       const metrics = await esAdapter.aggregateOtelMetricsRange(
@@ -180,8 +180,8 @@ export function registerMetricTools(server: McpServer, esAdapter: ElasticsearchA
     {
       startTime: z.string().describe('Start time (ISO 8601) - The beginning of the time window.'),
       endTime: z.string().describe('End time (ISO 8601) - The end of the time window.'),
-      service: z.string().optional().describe('Service name (optional) - The service whose metrics to analyze. If not provided, metrics from all services will be included unless services array is specified. Use listServices to get a list of available services.'),
-      services: z.array(z.string()).optional().describe('Services array (optional) - Multiple services whose metrics to analyze. Takes precedence over service parameter if both are provided.'),
+      service: z.string().optional().describe('Service name (optional) - The service whose metrics to analyze. If not provided, metrics from all services will be included unless services array is specified. Use servicesGet tool to find available services.'),
+      services: z.array(z.string()).optional().describe('Services array (optional) - Multiple services whose metrics to analyze. Takes precedence over service parameter if both are provided. Use servicesGet tool to find available services.'),
       metricField: z.string().describe('Metric field - The specific metric field to analyze. Use searchMetricsFields to get a list of available fields and their schemas.'),
       metricType: z.enum(['gauge', 'counter', 'monotonic_counter', 'enum', 'unknown']).describe('Metric type - The type of metric to use for anomaly detection. Determines which algorithms to apply.'),
       absoluteThreshold: z.number().optional().describe('Absolute value threshold. If not provided, mean will be used.'),
@@ -341,8 +341,8 @@ export function registerMetricTools(server: McpServer, esAdapter: ElasticsearchA
         start: z.string().describe('Start time in ISO 8601 format'),
         end: z.string().describe('End time in ISO 8601 format')
       }).describe('Time window for analysis'),
-      service: z.string().optional().describe('Filter to spans from a specific service'),
-      services: z.array(z.string()).optional().describe('Filter to spans from multiple services (overrides service parameter)'),
+      service: z.string().optional().describe('Filter to spans from a specific service. Use servicesGet tool to find available services.'),
+      services: z.array(z.string()).optional().describe('Filter to spans from multiple services (overrides service parameter). Use servicesGet tool to find available services.'),
       operation: z.string().optional().describe('Filter to a specific operation name'),
       thresholds: z.object({
         absolute: z.number().optional().describe('Minimum duration in nanoseconds (default: 1000000)'),

@@ -21,7 +21,7 @@ export function registerLogTools(server: McpServer, esAdapter: ElasticsearchAdap
     'findLogs',
     { 
       pattern: z.string().optional().describe('Text to search within log messages and fields'),
-      service: z.string().optional().describe('Filter to logs from a specific service.'),
+      service: z.string().optional().describe('Filter to logs from a specific service. Use servicesGet tool to find available services.'),
       services: z.array(z.string()).optional().describe('Filter to logs from multiple services (overrides service parameter)'),
       level: z.string().optional().describe('Filter by log severity (e.g., "error", "info", "warn")'),
       timeRange: z.object({
@@ -114,8 +114,8 @@ export function registerLogTools(server: McpServer, esAdapter: ElasticsearchAdap
     'logFieldsGet',
     { 
       search: z.string().optional().describe('Filter fields by name pattern'),
-      service: z.string().optional().describe('Filter to fields from a specific service'),
-      services: z.array(z.string()).optional().describe('Filter to fields from multiple services (overrides service parameter)'),
+      service: z.string().optional().describe('Filter to fields from a specific service. Use servicesGet tool to find available services.'),
+      services: z.array(z.string()).optional().describe('Filter to fields from multiple services (overrides service parameter). Use servicesGet tool to find available services.'),
       useSourceDocument: z.boolean().optional().default(true).describe('Include source document fields in results')
     },
     async (args: { search?: string, service?: string, services?: string[], useSourceDocument?: boolean }, extra: unknown) => {
@@ -201,7 +201,7 @@ export function registerLogTools(server: McpServer, esAdapter: ElasticsearchAdap
         start: z.string().describe('Start time in ISO 8601 format'),
         end: z.string().describe('End time in ISO 8601 format')
       }).describe('Time window for analysis'),
-      service: z.string().optional().describe('Filter to logs from a specific service'),
+      service: z.string().optional().describe('Filter to logs from a specific service. Use servicesGet tool to find available services.'),
       services: z.array(z.string()).optional().describe('Filter to logs from multiple services (overrides service parameter)'),
       methods: z.array(z.enum(['frequency', 'pattern', 'statistical', 'clustering', 'cardinality', 'ngramSimilarity'])).optional().describe('Detection methods to apply'),
       thresholds: z.object({
