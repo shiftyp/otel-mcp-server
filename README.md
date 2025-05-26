@@ -817,48 +817,38 @@ You can test OTEL MCP Server with the official [OpenTelemetry Demo](https://gith
 
 ### Steps:
 1. **Deploy the OTEL Demo** (e.g., via Docker Compose or Kubernetes)
-2. **Find your Elasticsearch endpoint and credentials** (usually from the OTEL demo's output or secrets)
+2. **Ensure Elasticsearch security is disabled** in your OTEL demo deployment
 3. **Configure your `.env`** for OTEL MCP Server:
    ```env
    ELASTICSEARCH_URL=http://localhost:9200
-   ELASTICSEARCH_USERNAME=elastic
-   ELASTICSEARCH_PASSWORD=yourpassword
-   # ...other settings
+   # No authentication needed with security disabled
+   SERVER_NAME=otel-mcp-server
+   LOGLEVEL=info
    ```
 4. **Run OTEL MCP Server** and connect your MCP client (e.g., Windsurf)
 
-### ⚠️ Known Issue: Elasticsearch HTTPS/SSL
-- The OTEL demo often exposes Elasticsearch with **self-signed HTTPS** (SSL/TLS) enabled.
-- The MCP server (and many clients) may fail to connect due to SSL verification errors.
+### ⚠️ Elasticsearch Security Configuration
 
-#### **Workarounds:**
-- **Recommended:** Deploy an Nginx proxy that listens on HTTP and forwards to the Elasticsearch HTTPS endpoint, disabling SSL verification and injecting credentials.
-- Example Nginx config (see `demo/elasticsearch-nginx-proxy.conf`):
-  ```nginx
-  server {
-      listen 80;
-      location / {
-          proxy_pass https://elasticsearch-master:9200;
-          proxy_ssl_verify off;
-          # Base64 encoded elastic:changeme (default Elastic password, change for production!)
-          proxy_set_header Authorization "Basic ZWxhc3RpYzpjaGFuZ2VtZQ==";
-          proxy_set_header Host $host;
-          proxy_set_header X-Real-IP $remote_addr;
-          proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
-          proxy_set_header X-Forwarded-Proto $scheme;
-      }
-  }
-  ```
-  - **Warning:** The above uses the default password `changeme`. Change this for production deployments!
-  - See `demo/elasticsearch-nginx-proxy.yaml` for a ready-to-use Kubernetes deployment.
-- **Alternative:** If running locally, you may be able to set `ELASTICSEARCH_URL=http://localhost:<forwarded-port>` if you have port-forwarded HTTP traffic or disabled SSL in Elasticsearch.
-- **Not recommended:** Disabling SSL verification in Node.js globally (via `NODE_TLS_REJECT_UNAUTHORIZED=0`) is insecure for production.
+For development and testing purposes, we've disabled SSL and security in Elasticsearch to simplify connectivity:
 
-**Tip:**
-- After setting up the proxy, point `ELASTICSEARCH_URL` to the HTTP proxy endpoint (e.g., `http://localhost:8082`).
-- Use the provided credentials in your `.env`.
+#### **Development Setup:**
+- We've configured Elasticsearch with security features disabled
+- This allows direct HTTP connections without SSL/TLS verification issues
+- No need for proxies or complex authentication in development environments
 
-If you encounter connection issues, check the logs for SSL or authentication errors and consult the example proxy configs in `demo/`.
+#### **Configuration:**
+- Set `ELASTICSEARCH_URL` to the direct HTTP endpoint of your Elasticsearch instance
+- For the OTEL demo, this is typically `http://localhost:9200` or the appropriate service endpoint
+- No authentication credentials are required with security disabled
+
+```env
+ELASTICSEARCH_URL=http://localhost:9200
+# No username/password needed with security disabled
+```
+
+**Note:** For production environments, you should enable Elasticsearch security features and implement proper authentication and encryption. The current setup is optimized for development ease of use.
+
+If you encounter connection issues, check the logs for error details. Most connection problems can be resolved by ensuring Elasticsearch security features are properly disabled in your development environment.
 
 ## 🚢 Deployment & Orchestration Notes
 
