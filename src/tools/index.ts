@@ -4,6 +4,7 @@ import { registerBasicTools } from './core/basicTools.js';
 import { registerTraceTools } from './traces/traceTools.js';
 import { registerMetricTools } from './metrics/metricTools.js';
 import { registerLogTools } from './logs/logTools.js';
+import { registerCommonTools } from './common/commonTools.js';
 import { ElasticGuards, ElasticsearchDataError } from '../utils/elasticGuards.js';
 import { logger } from '../utils/logger.js';
 
@@ -15,6 +16,9 @@ import { logger } from '../utils/logger.js';
 export async function registerAllTools(server: McpServer, esAdapter: ElasticsearchAdapter) {
   // Always register basic tools that don't depend on Elasticsearch
   registerBasicTools(server);
+  
+  // Register common tools that work across telemetry types
+  registerCommonTools(server, esAdapter);
   
   // Check and register trace tools if trace data is available
   try {

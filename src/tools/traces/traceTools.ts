@@ -48,42 +48,9 @@ export function registerTraceTools(server: McpServer, esAdapter: ElasticsearchAd
       }
     }
   );
-
-  // Services discovery tool
-  registerMcpTool(
-    server,
-    'servicesGet',
-    { search: z.string().optional().describe('Filter services by name pattern. Pass an empty string to get all services') },
-    async (args: { search?: string } = {}) => {
-      if (!args || typeof args !== 'object') args = {};
-      logger.info('[MCP TOOL] services called', { args });
-      
-      try {
-        // Get services from Elasticsearch
-        const services = await esAdapter.getServices(args.search);
-        
-        // Format services for display
-        const formattedServices = services.map(service => ({
-          name: service.name,
-          versions: service.versions
-        }));
-        
-        const output: MCPToolOutput = { content: [{ type: 'text', text: JSON.stringify(formattedServices, null, 2) }] };
-        logger.info('[MCP TOOL] services result', { args, serviceCount: services.length });
-        return output;
-      } catch (error) {
-        logger.error('[MCP TOOL] services error', { 
-          error: error instanceof Error ? error.message : String(error),
-          stack: error instanceof Error ? error.stack : undefined
-        });
-        
-        // Return structured error response using ElasticGuards utility
-        return ElasticGuards.formatErrorResponse(error, {
-          search: args.search
-        });
-      }
-    }
-  );
+  // Note: The servicesGet tool has been moved to commonTools.js
+  // to allow it to work across all telemetry types (traces, metrics, logs)
+  // and respect availability checks for each type.
 
   // Trace fields discovery tool
   registerMcpTool(
