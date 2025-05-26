@@ -30,14 +30,13 @@ To use OTEL MCP Server with tools like MCP Inspector or Windsurf, use the follow
 
 ## ✨ Features
 
-- **Query** Elasticsearch for traces, metrics, and logs
-- **Analyze a Trace**: Use the `traceAnalyze` tool to get span count, root span, duration, and services for any trace
-- **Anomaly Detection**: Detect anomalies in metrics, spans, and logs without ML models
-- **Service-Aware Tools**: Filter all tools by service or analyze across multiple services
-- **Field Discovery**: Find available fields for specific services to use in anomaly detection
-- **Connection Validation** on startup
-- **Cross-Platform**: Windows, macOS, and Linux
-- **Dual Mapping Mode Support**: Compatible with both OTEL and ECS mapping modes in Elasticsearch
+- **Direct Query** - Execute custom Elasticsearch queries against traces, metrics, and logs
+- **Service-Aware Tools** - Filter all tools by service or query across multiple services
+- **Field Discovery** - Find available fields for specific services to construct effective queries
+- **Structured Error Handling** - All tools return consistent, structured error responses
+- **Connection Validation** - Automatic validation on startup
+- **Cross-Platform** - Windows, macOS, and Linux
+- **Dual Mapping Mode Support** - Compatible with both OTEL and ECS mapping modes in Elasticsearch
 
 ## 🔄 Elasticsearch Mapping Modes
 
@@ -105,378 +104,312 @@ The OTEL MCP Server automatically detects and adapts to both mapping modes, so y
 
 ## 🛠️ Usage
 
-This server exposes MCP tools for use with MCP-compatible clients (such as Windsurf or MCP Inspector):
+This server exposes MCP tools for use with MCP-compatible clients (such as Windsurf or MCP Inspector). All tools return structured responses and include consistent error handling.
 
 ### 🔧 Available Tools
 
-### Traces
+### Direct Query Tools
 
-- `traceAnalyze`: Get a summary of a trace by ID
-- `spanGet`: Find a span by ID
-- `generateServiceDependencyGraph`: Create a service dependency graph for a time window
-- `generateSpanFlowchart`: Generate a flowchart for a span
-- `tracesQuery`: Query traces with Elasticsearch syntax
-- `traceFieldsGet`: Find available trace fields (supports service filtering)
-- `spanDurationAnomaliesDetect`: Detect anomalies in span durations (supports optional operation and multiple services)
+- `tracesQuery`: Execute custom Elasticsearch queries against trace data
+- `logsQuery`: Execute custom Elasticsearch queries against log data
+- `metricsQuery`: Execute custom Elasticsearch queries against metric data
 
-### Metrics
+### Field Discovery Tools
 
-- `searchMetricsFields`: Find available metric fields (supports service filtering)
-- `queryMetrics`: Query metrics with Elasticsearch syntax
-- `generateMetricsRangeAggregation`: Aggregate metrics over a time range
-- `detectMetricAnomalies`: Detect anomalies in metrics (supports optional metric field and multiple services)
+- `traceFieldsGet`: Discover available trace fields with their types (supports service filtering)
+- `logFieldsGet`: Discover available log fields with their types and schemas (supports service filtering)
+- `metricsFieldsGet`: Discover available metric fields with their types (supports service filtering)
 
-### Logs
+### Service Discovery
 
-- `findLogs`: Search logs for a pattern (supports service filtering and time ranges)
-- `logsTable`: Display logs in a tabular format with customizable fields and trace links
-- `logFieldsGet`: Find available log fields (supports service filtering)
-- `logsQuery`: Query logs with Elasticsearch syntax
-- `logAnomaliesDetect`: Detect anomalies in logs using a hybrid approach (supports multiple detection methods)
-- `errorsGetTop`: Get top errors for a service or across multiple services
+- `servicesGet`: List all available services and their versions
 
-### Visualizations
+### Common Query Parameters
 
-- `generateMarkdownVisualizations`: Generate various visualizations including:
-  - Incident timeline with emoji and special character support
-  - XY charts (bar, line, scatter) for metrics, logs, and traces
-  - Service dependency graphs
-  - Error distribution pie charts
-  - Service health charts
-  - Span Gantt charts
-  - Metrics time series tables
+All query tools support the following parameters:
 
-### Services
+- `query`: Elasticsearch query object
+- `size`: Maximum number of results to return
+- `from`: Starting offset for pagination
+- `sort`: Sort order for results
+- `aggs`: Aggregation definitions
+- `_source`: Fields to include in results (default: true)
+- `search`: Simple text search across fields
+- `agg`: Simplified aggregation definition
+- `runtime_mappings`: Dynamic field definitions
+- `script_fields`: Computed fields using scripts
 
-- `servicesGet`: List all services
+## 🔎 Example Queries
 
-## 🔍 Enhanced Anomaly Detection
+Here are some example queries you can use with the OTEL MCP Server tools:
 
-The OTEL MCP Server includes powerful anomaly detection capabilities that work without requiring machine learning models:
-
-### Metric Anomaly Detection
-
-The `detectMetricAnomalies` tool supports:
-
-- Optional metric field - Analyze any/all metrics when no specific field is provided
-- Multiple services - Compare anomalies across different services
-- Multiple detection methods - Z-score, percentile, IQR, and absolute threshold
+### Trace Queries
 
 ```javascript
-// Find any anomalous metrics across payment and checkout services
-mcp0_detectMetricAnomalies({
-  "startTime": "2025-05-23T12:00:00-04:00",
-  "endTime": "2025-05-23T14:00:00-04:00",
-  "services": ["payment", "checkout"],
-  "zScoreThreshold": 2.5
+// Query for traces with errors in the payment service
+mcp0_tracesQuery({
+  "query": {
+    "query": {
+      "bool": {
+        "must": [
+          { "term": { "service.name": "payment" } },
+          { "term": { "status.code": "ERROR" } }
+        ]
+      }
+    },
+    "size": 10,
+    "sort": [{ "@timestamp": "desc" }]
+  }
 })
 ```
 
-### Span Duration Anomaly Detection
-
-The `spanDurationAnomaliesDetect` tool supports:
-
-- Optional operation - Analyze any/all operations when no specific operation is provided
-- Multiple services - Compare anomalies across different services
-- Multiple detection methods - Z-score, percentile, IQR, and absolute threshold
+### Log Queries
 
 ```javascript
-// Find any slow spans across all operations in the payment service
-mcp0_spanDurationAnomaliesDetect({
-  "startTime": "2025-05-23T12:00:00-04:00",
-  "endTime": "2025-05-23T14:00:00-04:00",
-  "service": "payment",
-  "percentileThreshold": 95
+// Query for error logs in the checkout service
+mcp0_logsQuery({
+  "query": {
+    "query": {
+      "bool": {
+        "must": [
+          { "term": { "service.name": "checkout" } },
+          { "term": { "severity.text": "ERROR" } }
+        ]
+      }
+    },
+    "size": 10,
+    "sort": [{ "@timestamp": "desc" }]
+  }
 })
 ```
 
-### Log Anomaly Detection
-
-The `logAnomaliesDetect` tool implements a hybrid approach combining multiple detection strategies without requiring machine learning models:
-
-- **Frequency-based detection** - Identifies unusual spikes or drops in log volume compared to a baseline period
-- **Pattern-based detection** - Searches for logs containing error patterns or unexpected severity changes
-- **Statistical detection** - Flags logs with unusual field values based on statistical measures
-- **Clustering analysis** - Detects unusual groupings or unexpected variety in log messages
-
-The tool supports multiple services and provides configurable parameters for fine-tuning detection sensitivity:
+### Metric Queries
 
 ```javascript
-// Find anomalous logs across multiple services using all detection methods
-mcp0_logAnomaliesDetect({
-  "startTime": "2025-05-23T12:00:00-04:00",
-  "endTime": "2025-05-23T14:00:00-04:00",
-  "services": ["payment", "checkout", "inventory"],
-  "methods": ["frequency", "pattern", "statistical", "clustering"],
-  "lookbackWindow": "7d",
-  "spikeThreshold": 3
-})
-
-// Focus on specific detection methods with custom parameters
-mcp0_logAnomaliesDetect({
-  "startTime": "2025-05-23T12:00:00-04:00",
-  "endTime": "2025-05-23T14:00:00-04:00",
-  "service": "payment",
-  "methods": ["pattern", "statistical"],
-  "patternKeywords": ["timeout", "connection refused", "database error"],
-  "includeDefaultPatterns": true,
-  "zScoreThreshold": 2.5,
-  "maxResults": 50
+// Query for high CPU usage metrics
+mcp0_metricsQuery({
+  "query": {
+    "query": {
+      "bool": {
+        "must": [
+          { "term": { "metric.name": "system.cpu.usage" } },
+          { "range": { "metric.value": { "gt": 0.8 } } }
+        ]
+      }
+    },
+    "size": 10,
+    "sort": [{ "@timestamp": "desc" }]
+  }
 })
 ```
 
-Results are grouped by service when analyzing multiple services, making it easy to identify which services are experiencing anomalies.
+## 🔍 Field Discovery Examples
 
-## 🔄 Service-Aware Tools
+The field discovery tools help you understand the data structure to build effective queries:
 
-All tools now support service filtering, allowing you to focus on specific services or analyze across multiple services:
-
-### Field Discovery
-
-Find fields available for specific services:
+### Trace Field Discovery
 
 ```javascript
-// Find CPU-related metric fields across multiple services
-mcp0_searchMetricsFields({
-  "search": "cpu",
-  "services": ["payment", "inventory", "shipping"]
-})
-
-// Find duration-related span fields in the checkout service
+// Find duration-related trace fields in the checkout service
 mcp0_traceFieldsGet({
   "search": "duration",
   "service": "checkout"
 })
 
-// Find error-related log fields across multiple services
+// Get all trace fields across multiple services
+mcp0_traceFieldsGet({
+  "services": ["payment", "inventory", "shipping"]
+})
+```
+
+### Log Field Discovery
+
+```javascript
+// Find error-related log fields
 mcp0_logFieldsGet({
-  "search": "error",
-  "services": ["payment", "checkout"]
+  "search": "error"
+})
+
+// Get log fields specific to the payment service
+mcp0_logFieldsGet({
+  "service": "payment"
 })
 ```
 
-### Log Search
-
-Filter logs by service and time range:
+### Metric Field Discovery
 
 ```javascript
-// Find timeout logs across multiple services
-mcp0_findLogs({
-  "pattern": "timeout",
-  "services": ["payment", "inventory", "shipping"],
-  "timeRange": {
-    "start": "now-1h",
-    "end": "now"
+// Find CPU-related metric fields
+mcp0_metricsFieldsGet({
+  "search": "cpu"
+})
+
+// Get metric fields across multiple services
+mcp0_metricsFieldsGet({
+  "services": ["payment", "inventory", "shipping"]
+})
+```
+
+### Service Discovery
+
+```javascript
+// Get all available services
+mcp0_servicesGet({})
+
+// Find services matching a pattern
+mcp0_servicesGet({
+  "search": "payment"
+})
+
+```
+
+## 💻 Testing with OpenTelemetry Demo
+
+You can test OTEL MCP Server with the official [OpenTelemetry Demo](https://github.com/open-telemetry/opentelemetry-demo) to ingest and query real traces, metrics, and logs.
+
+### Setup Steps:
+
+1. **Deploy the OpenTelemetry Demo** (via Docker Compose or Kubernetes)
+2. **Configure Elasticsearch** as an exporter in the demo
+3. **Set environment variables** for OTEL MCP Server to connect to your Elasticsearch instance
+4. **Start the OTEL MCP Server** using `npm start` or `npx otel-mcp-server`
+
+### Example Test Queries
+
+```javascript
+// Check available services
+mcp0_servicesGet({})
+
+// Find available trace fields
+mcp0_traceFieldsGet({})
+
+// Query for recent traces
+mcp0_tracesQuery({
+  "query": {
+    "query": { "match_all": {} },
+    "size": 10,
+    "sort": [{ "@timestamp": "desc" }]
+  }
+})
+```
+## 🔎 Error Handling
+
+All tools in the OTEL MCP Server provide structured error responses when issues occur. This makes it easier to diagnose and fix problems programmatically.
+
+### Error Response Format
+
+When an error occurs, tools return a consistent JSON structure:
+
+```json
+{
+  "error": true,
+  "type": "ElasticsearchDataError",
+  "message": "Error accessing trace data: index_not_found_exception",
+  "params": {
+    "query": { /* original query parameters */ }
+  }
+}
+```
+
+This structured approach provides several benefits:
+
+- **Programmatic Error Handling**: Clients can easily parse errors and handle them programmatically
+- **Improved Diagnostics**: The detailed error information makes it easier to diagnose and fix issues
+- **Consistent User Experience**: All tools handle errors in a consistent way
+
+## 💻 Conclusion
+
+The OTEL MCP Server provides a streamlined approach to querying OpenTelemetry data in Elasticsearch. By focusing on direct query capabilities and field discovery, it offers maximum flexibility while maintaining a simple, consistent interface.
+
+Key advantages:
+
+- **Direct Access**: Transparent access to Elasticsearch data without hiding query complexity
+- **Flexibility**: Full control over queries for maximum customization
+- **Discovery Support**: Tools to help understand the available data structure
+- **Minimal Abstraction**: No high-level abstractions that hide the underlying data model
+- **Consistent Error Handling**: Structured error responses across all tools
+```
+
+## 🔄 Adaptive Tool Registration
+
+The OTEL MCP Server automatically adapts to the available data in your Elasticsearch instance:
+
+- If trace data is available, trace tools are registered
+- If metric data is available, metric tools are registered
+- If log data is available, log tools are registered
+
+This ensures that you only see tools that will work with your available data. If a particular telemetry type is not available, the corresponding tools will not be registered, preventing you from attempting to use tools that would fail.
+
+## 💡 Usage Examples
+
+Here are some practical examples of how to use the OTEL MCP Server in real-world scenarios:
+
+### Troubleshooting Service Errors
+
+```
+This API endpoint is returning 500 errors. Use the tracesQuery tool to find recent traces for this endpoint, then examine the error details.
+```
+
+```javascript
+// Find traces with errors in the API service
+mcp0_tracesQuery({
+  "query": {
+    "query": {
+      "bool": {
+        "must": [
+          { "term": { "service.name": "api" } },
+          { "term": { "status.code": "ERROR" } },
+          { "range": { "@timestamp": { "gte": "now-1h" } } }
+        ]
+      }
+    },
+    "size": 10,
+    "sort": [{ "@timestamp": "desc" }]
   }
 })
 ```
 
-## 📊 Enhanced Visualizations
+### Investigating Performance Issues
 
-The OTEL MCP Server includes powerful visualization capabilities through the `generateMarkdownVisualizations` tool. All visualizations properly handle special characters and emojis using Unicode escaping.
-
-### Incident Timeline
-
-Show a chronological view of events during an incident:
+```
+The payment-service is showing high latency. Use the metricsQuery tool to find relevant metrics and identify any resource bottlenecks.
+```
 
 ```javascript
-// Generate an incident timeline for multiple services
-mcp0_generateMarkdownVisualizations({
-  "config": {
-    "timeRange": {
-      "start": "now-1h",
-      "end": "now"
+// Find high-latency metrics for the payment service
+mcp0_metricsQuery({
+  "query": {
+    "query": {
+      "bool": {
+        "must": [
+          { "term": { "service.name": "payment" } },
+          { "term": { "metric.name": "http.server.duration" } },
+          { "range": { "metric.value": { "gt": 1000 } } }
+        ]
+      }
     },
-    "config": {
-      "type": "incident-timeline",
-      "maxEvents": 20,
-      "correlateEvents": true,
-      "services": ["payment", "checkout"],
-      "includeMetrics": true,
-      "includeTraces": true
-    }
+    "size": 10,
+    "sort": [{ "metric.value": "desc" }]
   }
 })
 ```
 
-**Example Output:**
+## 💬 Contributing
 
-```mermaid
-timeline
-title Incident Timeline (with correlation)
-    section load-generator
-        07#58;42 PM : Warning Transient error StatusCode.UNAVAILABLE encountered while exporting logs to otel-collector#58;4317... : warning
-        07#58;42 PM : Warning Transient error StatusCode.UNAVAILABLE encountered while exporting traces to otel-collector#58;43... : warning
-        07#58;42 PM : Error Browser.new_context#58; Target page, context or browser has been closed Traceback (most recent ca... : critical
-        07#58;42 PM : Error POST [8768d8ad...][4bee997e...] : critical
-        07#58;42 PM : Error GET [73465730...][be2732b2...] : critical
-    section product-catalog
-        07#58;43 PM : Error oteldemo.ProductCatalogService/GetProduct [0a2da977...][9cef039b...] : critical
-```
+Contributions to the OTEL MCP Server are welcome! If you'd like to contribute:
 
-### Logs Table
+1. Fork the repository
+2. Create a feature branch
+3. Make your changes
+4. Submit a pull request
 
-Display logs in a tabular format with customizable fields and trace links:
+## 🔒 License
 
-### Logs Table
+MIT
 
-Generate a table of logs with customizable fields. You can use either the dedicated logs table tool or the markdown visualizations tool:
+---
 
-```javascript
-
-```javascript
-// Method 1: Using the dedicated logs table tool
-mcp0_logsTable({
-  "timeRange": {
-    "start": "now-1h",
-    "end": "now"
-  },
-  "maxRows": 3
-})
-
-// Method 2: Using the markdown visualizations tool
-mcp0_generateMarkdownVisualizations({
-  "config": {
-    "timeRange": {
-      "start": "now-1h",
-      "end": "now"
-    },
-    "config": {
-      "type": "logs-table",
-      "maxRows": 3,
-      "fields": ["timestamp", "service", "level", "message"],
-      "includeTraceLinks": true,
-      "services": ["payment", "checkout", "inventory"] // Optional: filter to specific services
-    }
-  }
-})
-```
-
-**Example Output:**
-
-| timestamp | service | level | message | trace_id |
-| --- | --- | --- | --- | --- |
-| 2025-05-25 22:52:49 | frontend-proxy | INFO | [2025-05-25T22:52:49.152Z] "GET /api/cart HTTP/1.1" 200 - via_upstream - "-" 0 24 2 2 "-" "python... | [01366d98...](trace:01366d986ed8a49882444b1569c938e0) |
-| 2025-05-25 22:52:47 | accounting | INFORMATION | Order details: {@OrderResult}. | - |
-| 2025-05-25 22:52:47 | fraud-detection | INFO | Consumed record with orderId: fa1d0a10-39ba-11f0-9877-debf89339049, and updated total count to: 1... | [ac36a9f5...](trace:ac36a9f58dbced6d24d8e3b141675301) |
-
-*Showing 3 of 100 logs. Use maxRows parameter to adjust.*
-
-### Logs Table
-
-Display logs in a tabular format with customizable fields:
-
-```javascript
-// Generate a logs table with custom fields
-mcp0_generateMarkdownVisualizations({
-  "config": {
-    "timeRange": {
-      "start": "now-1h",
-      "end": "now"
-    },
-    "config": {
-      "type": "logs-table",
-      "maxRows": 5,
-      "fields": ["timestamp", "service", "level", "message"],
-      "includeTraceLinks": true
-    }
-  }
-})
-```
-
-**Example Output:**
-
-| timestamp | service | level | message | trace_id |
-| --- | --- | --- | --- | --- |
-| 2025-05-25 22:52:49 | frontend-proxy | INFO | [2025-05-25T22:52:49.152Z] "GET /api/cart HTTP/1.1" 200 - via_upstream - "-" 0 24 2 2 "-" "python... | [01366d98...](trace:01366d986ed8a49882444b1569c938e0) |
-| 2025-05-25 22:52:47 | accounting | INFORMATION | Order details: {@OrderResult}. | - |
-| 2025-05-25 22:52:47 | fraud-detection | INFO | Consumed record with orderId: fa1d0a10-39ba-11f0-9877-debf89339049, and updated total count to: 1... | [ac36a9f5...](trace:ac36a9f58dbced6d24d8e3b141675301) |
-| 2025-05-25 22:52:47 | currency | INFO | Convert conversion successful | [ac36a9f5...](trace:ac36a9f58dbced6d24d8e3b141675301) |
-| 2025-05-25 22:52:47 | quote | INFO | Calculated quote | [ac36a9f5...](trace:ac36a9f58dbced6d24d8e3b141675301) |
-
-*Showing 5 of 100 logs. Use maxRows parameter to adjust.*
-
-### XY Charts
-
-Create bar, line, or scatter charts for visualizing metrics, logs, or traces:
-
-```javascript
-// Generate a bar chart showing log counts by service
-mcp0_generateMarkdownVisualizations({
-  "config": {
-    "timeRange": {
-      "start": "now-24h",
-      "end": "now"
-    },
-    "config": {
-      "type": "xy-chart",
-      "chartType": "bar",
-      "xField": "Resource.service.name",
-      "yField": "count",
-      "dataType": "logs",
-      "title": "Log Count by Service",
-      "xAxisTitle": "Service",
-      "yAxisTitle": "Count"
-    }
-  }
-})
-```
-
-### Field Distribution Pie Chart
-
-Show the distribution of values for a specific field:
-
-```javascript
-// Generate a pie chart showing distribution of service names
-mcp0_generateMarkdownVisualizations({
-  "config": {
-    "timeRange": {
-      "start": "now-24h",
-      "end": "now"
-    },
-    "config": {
-      "type": "field-distribution-pie",
-      "field": "Resource.service.name",
-      "dataType": "logs",
-      "maxSlices": 10,
-      "showData": true
-    }
-  }
-})
-```
-
-**Example Output:**
-
-```mermaid
-pie showData
-    title Distribution of Resource.service.name
-    "load-generator" : 800
-    "kafka" : 81
-    "frontend-proxy" : 48
-    "cart" : 22
-    "recommendation" : 9
-    "currency" : 6
-    "accounting" : 4
-    "fraud-detection" : 4
-    "quote" : 4
-    "ad" : 2
-```
-
-### Error Distribution Pie Chart
-
-Show the distribution of errors by service or type:
-
-```javascript
-// Generate a pie chart showing distribution of errors
-mcp0_generateMarkdownVisualizations({
-  "config": {
-    "timeRange": {
-      "start": "now-24h",
-      "end": "now"
-    },
-    "config": {
-      "type": "error-pie",
-      "services": ["payment", "checkout", "inventory"],
+Built with ❤️ for the OpenTelemetry community
       "maxResults": 10,
       "showData": true
     }
@@ -997,43 +930,36 @@ If you encounter connection issues, check the logs for SSL or authentication err
    }
    ```
 
-4. Search for metric fields:
+4. Find available metric fields:
    ```json
    {
-     "tool": "searchMetricsFields",
+     "tool": "metricsFieldsGet",
      "params": {
-       "search": "value"
+       "search": "cpu"
      }
    }
    ```
 
-5. Detect metric anomalies:
+5. Query metrics data:
    ```json
    {
-     "tool": "detectMetricAnomalies",
+     "tool": "metricsQuery",
      "params": {
-       "startTime": "2023-01-01T00:00:00Z",
-       "endTime": "2023-01-02T00:00:00Z",
-       "service": "frontend",
-       "metricField": "metric.value",
-       "nStddev": 3
+       "query": {
+         "query": { "match_all": {} },
+         "size": 10,
+         "sort": [{ "@timestamp": "desc" }]
+       }
      }
    }
    ```
 
 6. List all services:
-   ```
-   list
-   ```
-
-3. Get a specific resource:
-   ```
-   get traces/123e4567-e89b-12d3-a456-426614174000
-   ```
-
-4. List only trace resources:
-   ```
-   list traces
+   ```json
+   {
+     "tool": "servicesGet",
+     "params": {}
+   }
    ```
 
 ## 🔍 Debugging
@@ -1047,14 +973,36 @@ DEBUG=1 npm start
 This will show:
 - Request/response headers
 - Full request/response bodies
+- Elasticsearch query details
+- Error stack traces
+
+## 🔎 Error Handling
+
+All tools return structured error responses when issues occur. For example:
+
+```json
+{
+  "error": true,
+  "type": "ElasticsearchDataError",
+  "message": "Error accessing trace data: index_not_found_exception",
+  "params": {
+    "query": { "match_all": {} }
+  }
+}
+```
 - Detailed error messages
 - Connection details
 
 ## 🤝 Contributing
 
-Contributions are welcome! Please feel free to submit a Pull Request.
+Contributions to the OTEL MCP Server are welcome! If you'd like to contribute:
 
-## 📄 License
+1. Fork the repository
+2. Create a feature branch
+3. Make your changes
+4. Submit a pull request
+
+## 📝 License
 
 This project is licensed under the MIT License - see the [LICENSE](LICENSE) file for details.
 
