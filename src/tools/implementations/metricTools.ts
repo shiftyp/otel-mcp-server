@@ -36,71 +36,39 @@ export function registerMetricTools(server: McpServer, esAdapter: ElasticsearchA
           serviceFilter = args.service;
         }
         
-        // Get all metric fields from Elasticsearch, filtered by service if specified
+        // Get actual field types from Elasticsearch using the MetricsAdapter
+        const metricFields = await esAdapter.listMetricFields();
+        
+        // Create a map of field names to their types
+        const fieldTypeMap = new Map<string, string>();
+        metricFields.forEach(field => {
+          fieldTypeMap.set(field.name, field.type);
+        });
+        
+        // Get co-occurring fields information
         const { fields: allFields, coOccurrences } = await otelMetricsTools.getAllMetricFields(args.search, serviceFilter, args.useSourceDocument);
-        const schemas = await otelMetricsTools.getGroupedMetricSchemas(args.search);
         
-        // Use a recent time range for metric type detection (last 24 hours)
-        const endTime = new Date().toISOString();
-        const startTime = new Date(Date.now() - 24 * 60 * 60 * 1000).toISOString();
+        // Filter fields based on search term if provided
+        let filteredFields = allFields.filter(fieldName => fieldTypeMap.has(fieldName));
+        if (args.search && args.search.trim() !== '') {
+          const searchTerm = args.search.toLowerCase();
+          filteredFields = filteredFields.filter(fieldName => fieldName.toLowerCase().includes(searchTerm));
+        }
         
-        // Format the output with schema information and detected metric type
-        const fieldsPromises = allFields.map(async (fieldName) => {
-          // Find the schema information for this field
-          let type = 'unknown';
-          let schema = null;
+        // Format the output with schema information
+        const fieldsPromises = filteredFields.map(async (fieldName) => {
+          // Get the actual datatype from Elasticsearch
+          const type = fieldTypeMap.get(fieldName) || 'unknown';
           
-          // Look through all schemas to find this field
-          for (const [metricName, fieldSchema] of Object.entries(schemas)) {
-            for (const [field, fieldType] of Object.entries(fieldSchema)) {
-              if (field === fieldName || `metric.${field}` === fieldName) {
-                type = fieldType;
-                schema = { type: fieldType };
-                break;
-              }
-            }
-            if (schema) break;
-          }
+          // Create the schema object with the actual type
+          const schema = type !== 'unknown' ? { type } : {};
           
-          // Only attempt to detect metric type for numeric fields
-          let metricTypeInfo = {
-            metricType: 'unknown',
-            isGauge: false,
-            isCounter: false,
-            isMonotonicCounter: false,
-            isEnum: false,
-            isUnknown: true
-          };
-          
-          if (type === 'number' || type === 'float' || type === 'integer' || type === 'long' || type === 'double') {
-            try {
-              // Detect the metric type
-              const metricType = await otelMetricsTools.detectMetricType(
-                fieldName,
-                startTime,
-                endTime,
-                serviceFilter
-              );
-              
-              metricTypeInfo = {
-                metricType: metricType,
-                isGauge: metricType === 'gauge',
-                isCounter: metricType === 'counter',
-                isMonotonicCounter: metricType === 'monotonic_counter',
-                isEnum: metricType === 'enum',
-                isUnknown: metricType === 'unknown'
-              };
-            } catch (error) {
-              logger.warn(`[MCP TOOL] Error detecting metric type for ${fieldName}:`, error);
-            }
-          }
+          // We no longer need to detect metric type as we're removing that information from the output
           
           return {
             name: fieldName,
-            type,
-            schema,
-            metricType: metricTypeInfo.metricType,
-            typeInfo: metricTypeInfo,
+            type, // This is the actual datatype from Elasticsearch
+            schema, // This is the actual schema from Elasticsearch
             count: 0, // We don't have count information for metrics
             coOccurringFields: coOccurrences[fieldName] || [] // Include co-occurring fields
           };
@@ -214,7 +182,8 @@ export function registerMetricTools(server: McpServer, esAdapter: ElasticsearchA
       endTime: z.string().describe('End time (ISO 8601) - The end of the time window.'),
       service: z.string().optional().describe('Service name (optional) - The service whose metrics to analyze. If not provided, metrics from all services will be included unless services array is specified. Use listServices to get a list of available services.'),
       services: z.array(z.string()).optional().describe('Services array (optional) - Multiple services whose metrics to analyze. Takes precedence over service parameter if both are provided.'),
-      metricField: z.string().optional().describe('Metric field (optional) - The specific metric field to analyze. If not provided, all numeric fields will be analyzed and results will be grouped by field. Use searchMetricsFields to get a list of available fields and their schemas.'),
+      metricField: z.string().describe('Metric field - The specific metric field to analyze. Use searchMetricsFields to get a list of available fields and their schemas.'),
+      metricType: z.enum(['gauge', 'counter', 'monotonic_counter', 'enum', 'unknown']).describe('Metric type - The type of metric to use for anomaly detection. Determines which algorithms to apply.'),
       absoluteThreshold: z.number().optional().describe('Absolute value threshold. If not provided, mean will be used.'),
       zScoreThreshold: z.number().optional().describe('Z-score threshold (default: 3) - Number of standard deviations above mean to flag as anomaly.'),
       percentileThreshold: z.number().optional().describe('Percentile threshold (default: 95) - Flag values above this percentile.'),
@@ -228,7 +197,8 @@ export function registerMetricTools(server: McpServer, esAdapter: ElasticsearchA
     async (args: { 
       startTime: string, 
       endTime: string, 
-      metricField?: string, 
+      metricField: string, 
+      metricType: 'gauge' | 'counter' | 'monotonic_counter' | 'enum' | 'unknown',
       service?: string, 
       services?: string[],
       absoluteThreshold?: number,
@@ -256,34 +226,106 @@ export function registerMetricTools(server: McpServer, esAdapter: ElasticsearchA
       // Determine which service parameter to use (services array takes precedence)
       const serviceParam = args.services && args.services.length > 0 ? args.services : args.service;
       
-      const anomalies = await anomalyDetectionTool.detectMetricAnomalies(
+      // Convert string metric type to enum value (now required)
+      const { MetricType } = await import('../../tools/otelMetrics.js');
+      let metricTypeEnum;
+      switch (args.metricType) {
+        case 'gauge': metricTypeEnum = MetricType.GAUGE; break;
+        case 'counter': metricTypeEnum = MetricType.COUNTER; break;
+        case 'monotonic_counter': metricTypeEnum = MetricType.MONOTONIC_COUNTER; break;
+        case 'enum': metricTypeEnum = MetricType.ENUM; break;
+        default: metricTypeEnum = MetricType.UNKNOWN; break;
+      }
+      
+      let result = await anomalyDetectionTool.detectMetricAnomalies(
         args.startTime,
         args.endTime,
         args.metricField,
+        metricTypeEnum,
         serviceParam,
         options
       );
       
+      // Handle the case where the result is an array of field names instead of anomalies
+      if (Array.isArray(result) && result.length > 0 && typeof result[0] === 'string') {
+        logger.info('[MCP TOOL] detectMetricAnomalies returned field names, processing fields', { fieldCount: result.length });
+        
+        // Process up to 5 fields to avoid excessive processing
+        const fieldsToProcess = result.slice(0, 5);
+        const allAnomalies: any[] = [];
+        const fieldResults: any = {};
+        
+        for (const field of fieldsToProcess) {
+          try {
+            logger.info(`[MCP TOOL] Processing field: ${field}`);
+            const fieldResult = await anomalyDetectionTool.detectMetricAnomalies(
+              args.startTime,
+              args.endTime,
+              field,
+              metricTypeEnum,
+              serviceParam,
+              options
+            );
+            
+            if (fieldResult.anomalies && fieldResult.anomalies.length > 0) {
+              allAnomalies.push(...fieldResult.anomalies);
+              fieldResults[field] = {
+                anomalyCount: fieldResult.anomalies.length,
+                metricType: fieldResult.metricType
+              };
+            }
+          } catch (error) {
+            logger.error(`[MCP TOOL] Error processing field: ${field}`, { error });
+          }
+        }
+        
+        // Sort all anomalies by deviation (descending) and limit to maxResults
+        const maxResults = args.maxResults || 100;
+        const sortedAnomalies = allAnomalies
+          .sort((a, b) => (b.deviation || 0) - (a.deviation || 0))
+          .slice(0, maxResults);
+        
+        result = {
+          anomalies: sortedAnomalies,
+          processedFields: fieldResults,
+          potentialFields: result
+        };
+      }
+      
       const output: MCPToolOutput = {
-        content: [{ type: 'text', text: JSON.stringify(anomalies, null, 2) }]
+        content: [{ type: 'text', text: JSON.stringify(result, null, 2) }]
       };
       
-      // Handle both grouped and flat response formats for logging
-      if (anomalies && typeof anomalies === 'object' && 'grouped_by_service' in anomalies) {
-        // Grouped response
-        logger.info('[MCP TOOL] detectMetricAnomalies result (grouped)', { 
-          args, 
-          totalAnomalies: anomalies.total_anomalies,
-          serviceCount: Object.keys(anomalies.services).length
-        });
-      } else {
-        // Flat response
-        const anomalyArray = Array.isArray(anomalies) ? anomalies : [];
+      // Handle different response formats for logging
+      if (result && typeof result === 'object') {
+        if ('grouped_by_service' in result) {
+          // Grouped response
+          logger.info('[MCP TOOL] detectMetricAnomalies result (grouped)', { 
+            args, 
+            totalAnomalies: result.total_anomalies,
+            serviceCount: Object.keys(result.services).length
+          });
+        } else if ('anomalies' in result) {
+          // Anomalies response
+          logger.info('[MCP TOOL] detectMetricAnomalies result', { 
+            args, 
+            anomalyCount: result.anomalies?.length || 0,
+            processedFields: Object.keys(result.processedFields || {})
+          });
+        } else {
+          // Other object response
+          logger.info('[MCP TOOL] detectMetricAnomalies result', { 
+            args, 
+            resultType: 'object',
+            keys: Object.keys(result)
+          });
+        }
+      } else if (Array.isArray(result)) {
+        // Array response
         logger.info('[MCP TOOL] detectMetricAnomalies result', { 
           args, 
-          anomalyCount: anomalyArray.length,
-          detectionMethods: anomalyArray.length > 0 ? 
-            [...new Set(anomalyArray.flatMap((a: any) => a.detection_methods))] : []
+          resultType: 'array',
+          length: result.length
         });
       }
       return output;

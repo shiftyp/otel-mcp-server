@@ -66,17 +66,20 @@ export class MonotonicCounterAnomalyDetector {
     // Detect plateaus (periods where the counter stops increasing)
     for (let i = 0; i < rateOfChange.length; i++) {
       if (rateOfChange[i] === 0 && values[i+1] > 1) { // Only consider plateaus for non-trivial counters
+        // Calculate a meaningful deviation value - use 1.0 as a minimum to ensure it's detected
+        const deviation = Math.max(1.0, stats.mean > 0 ? Math.abs(stats.mean - rateOfChange[i]) / stats.mean : 1.0);
+        
         anomalies.push({
           timestamp: rateTimestamps[i],
-          value: rateOfChange[i],
-          expectedValue: stats.mean,
-          deviation: stats.mean > 0 ? -1 : 0, // -100% deviation (plateau)
+          value: values[i+1], // Use the actual counter value instead of rate
+          expectedValue: values[i+1] + (stats.mean * 60), // Expected value after 1 minute at mean rate
+          deviation: deviation, // Meaningful deviation value
           detectionMethod: 'plateau',
           metricField,
           threshold: 0,
           type: 'plateau',
           field: metricField,
-          message: `Counter has plateaued (stopped increasing) at value ${values[i+1]}`
+          message: `Counter has plateaued (stopped increasing) at value ${values[i+1].toFixed(2)}`
         });
       }
     }

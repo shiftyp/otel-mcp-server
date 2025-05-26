@@ -279,8 +279,9 @@ export class IncidentTimelineTool {
                 const value = anomaly.value !== undefined ? anomaly.value : 0;
                 const formattedValue = typeof value === 'number' ? value.toFixed(2) : value;
                 
-                // Skip anomalies with zero or very small values as they're likely not meaningful
-                if (value === 0 || (typeof value === 'number' && Math.abs(value) < 0.001)) {
+                // Only skip anomalies with undefined values or extremely small values
+                // We don't want to skip valid plateau anomalies or other anomalies with small deviations
+                if (value === undefined || (typeof value === 'number' && Math.abs(value) < 0.0001)) {
                   return null;
                 }
                 

@@ -18,13 +18,13 @@ export class FrequencyDetector {
     serviceOrServices?: string | string[],
     options: LogAnomalyOptions = {}
   ): Promise<FrequencyAnomaly[]> {
-    logger.info('[FrequencyDetector] Detecting frequency anomalies', { startTime, endTime });
+    logger.info('[FrequencyDetector] Detecting frequency anomalies', { startTime, endTime, options });
     
     try {
       const {
-        interval = '1h',
-        spikeThreshold = 3,
-        lookbackWindow = '7d'
+        interval = '30m',  // Default to 30-minute intervals
+        spikeThreshold = 0.5,  // Lower threshold to detect more subtle anomalies
+        lookbackWindow = '14d'  // Longer lookback to establish a better baseline
       } = options;
       
       // Calculate baseline period
@@ -40,7 +40,11 @@ export class FrequencyDetector {
         this.addServiceFilter(must, serviceOrServices);
       }
       
-      // Query for log frequency over time
+      // Determine if we're using a calendar interval (day, week, month, year) or fixed interval
+      const isCalendarInterval = interval.endsWith('d') || interval.endsWith('w') || 
+                                interval.endsWith('M') || interval.endsWith('y');
+      
+      // Create the aggregation query with the appropriate interval type
       const aggQuery = {
         size: 0,
         query: { bool: { must } },
@@ -48,13 +52,19 @@ export class FrequencyDetector {
           time_buckets: {
             date_histogram: {
               field: '@timestamp',
-              fixed_interval: interval
+              // Use calendar_interval for day/week/month/year, fixed_interval for hour/minute
+              [isCalendarInterval ? 'calendar_interval' : 'fixed_interval']: interval
             }
           },
-          // Also aggregate by log level for additional context
           log_levels: {
             terms: {
-              field: 'level',
+              field: 'SeverityText',
+              size: 10
+            }
+          },
+          services: {
+            terms: {
+              field: 'Resource.service.name',
               size: 10
             }
           }
@@ -75,7 +85,7 @@ export class FrequencyDetector {
       const analysisBuckets = buckets.filter((b: any) => new Date(b.key_as_string).getTime() >= baselineCutoff);
       
       if (baselineBuckets.length === 0) {
-        logger.warn('[FrequencyDetector] No baseline data available');
+        logger.warn('[FrequencyDetector] No baseline data available for the specified interval');
         return [];
       }
       
@@ -84,18 +94,21 @@ export class FrequencyDetector {
       const baselineMean = this.calculateMean(baselineCounts);
       const baselineStdDev = this.calculateStdDev(baselineCounts, baselineMean);
       
-      // Detect anomalies
+      // Detect anomalies based on thresholds
       const anomalies: FrequencyAnomaly[] = [];
       
+      // Check for both spikes and drops
       for (const bucket of analysisBuckets) {
         const count = bucket.doc_count;
         const timestamp = bucket.key_as_string;
+        const date = new Date(timestamp);
         
-        // Calculate Z-score
-        const zScore = baselineStdDev > 0 ? (count - baselineMean) / baselineStdDev : 0;
+        // Calculate z-score for this interval
+        const zScore = (count - baselineMean) / (baselineStdDev || 1);
+        const absZScore = Math.abs(zScore);
         
-        // Check if count exceeds threshold
-        if (Math.abs(zScore) > spikeThreshold || count > baselineMean * spikeThreshold) {
+        // Detect both spikes and drops
+        if (absZScore > spikeThreshold) {
           // Get additional context for this time period
           const contextQuery = {
             size: 0,
@@ -104,7 +117,9 @@ export class FrequencyDetector {
                 must: [
                   { range: { '@timestamp': { 
                     gte: timestamp, 
-                    lt: this.getNextIntervalTimestamp(timestamp, interval) 
+                    lt: isCalendarInterval ? 
+                        this.getNextCalendarIntervalTimestamp(timestamp, interval) :
+                        this.getNextIntervalTimestamp(timestamp, interval) 
                   } } }
                 ]
               }
@@ -112,13 +127,13 @@ export class FrequencyDetector {
             aggs: {
               log_levels: {
                 terms: {
-                  field: 'level',
+                  field: 'SeverityText',
                   size: 10
                 }
               },
               services: {
                 terms: {
-                  field: 'service.name',
+                  field: 'Resource.service.name',
                   size: 10
                 }
               }
@@ -138,14 +153,32 @@ export class FrequencyDetector {
           const dominantLevel = logLevels.length > 0 ? logLevels[0].key : undefined;
           const dominantService = services.length > 0 ? services[0].key : undefined;
           
+          const anomalyType = zScore > 0 ? 'spike' : 'drop';
+          const deviation = Math.max(1.0, absZScore);
+          
+          // Format the message based on the interval type
+          let message = '';
+          if (interval.endsWith('d')) {
+            message = `Daily log ${anomalyType}: ${count} logs on ${date.toDateString()} (expected ~${Math.round(baselineMean)}), z-score: ${zScore.toFixed(2)}`;
+          } else if (interval.endsWith('w')) {
+            message = `Weekly log ${anomalyType}: ${count} logs for week of ${date.toDateString()} (expected ~${Math.round(baselineMean)}), z-score: ${zScore.toFixed(2)}`;
+          } else if (interval.endsWith('M')) {
+            message = `Monthly log ${anomalyType}: ${count} logs for ${date.toLocaleString('default', { month: 'long', year: 'numeric' })} (expected ~${Math.round(baselineMean)}), z-score: ${zScore.toFixed(2)}`;
+          } else {
+            message = `Log frequency ${anomalyType}: ${count} logs at ${date.toLocaleString()} (expected ~${Math.round(baselineMean)}), z-score: ${zScore.toFixed(2)}`;
+          }
+          
           anomalies.push({
             timestamp,
             count,
             expectedCount: baselineMean,
-            deviation: count - baselineMean,
+            deviation: deviation,
             level: dominantLevel,
             service: dominantService,
-            score: Math.abs(zScore)
+            score: deviation,
+            detectionMethod: 'z-score',
+            type: anomalyType,
+            message
           });
         }
       }
@@ -156,6 +189,44 @@ export class FrequencyDetector {
       logger.error('[FrequencyDetector] Error detecting frequency anomalies', { error });
       return [];
     }
+  }
+  
+  /**
+   * Calculate the next calendar interval timestamp (day, week, month, year)
+   */
+  private getNextCalendarIntervalTimestamp(timestamp: string, interval: string): string {
+    const date = new Date(timestamp);
+    const unit = interval.slice(-1);
+    const value = parseInt(interval.slice(0, -1)) || 1;
+    
+    switch (unit) {
+      case 'd':
+        date.setDate(date.getDate() + value);
+        break;
+      case 'w':
+        date.setDate(date.getDate() + (value * 7));
+        break;
+      case 'M':
+        date.setMonth(date.getMonth() + value);
+        break;
+      case 'y':
+        date.setFullYear(date.getFullYear() + value);
+        break;
+      default:
+        // Default to 1 day
+        date.setDate(date.getDate() + 1);
+    }
+    
+    return date.toISOString();
+  }
+  
+  /**
+   * Calculate the next day's timestamp
+   */
+  private getNextDayTimestamp(timestamp: string): string {
+    const date = new Date(timestamp);
+    date.setDate(date.getDate() + 1);
+    return date.toISOString();
   }
   
   /**
@@ -236,13 +307,13 @@ export class FrequencyDetector {
       // Handle array of services
       const serviceTerms: any[] = [];
       
-      // For each service, create terms for all possible field names
+      // For each service, create terms for the verified field names
       serviceOrServices.forEach(service => {
         if (service && service.trim() !== '') {
-          serviceTerms.push({ term: { 'service.name': service } });
-          serviceTerms.push({ term: { 'service': service } });
+          // Based on our verification, Resource.service.name is the primary field
           serviceTerms.push({ term: { 'Resource.service.name': service } });
-          serviceTerms.push({ term: { 'resource.attributes.service.name': service } });
+          // Include Attributes.otelServiceName as a fallback
+          serviceTerms.push({ term: { 'Attributes.otelServiceName': service } });
         }
       });
       
@@ -260,10 +331,10 @@ export class FrequencyDetector {
       must.push({
         bool: {
           should: [
-            { term: { 'service.name': service } },
-            { term: { 'service': service } },
+            // Based on our verification, Resource.service.name is the primary field
             { term: { 'Resource.service.name': service } },
-            { term: { 'resource.attributes.service.name': service } }
+            // Include Attributes.otelServiceName as a fallback
+            { term: { 'Attributes.otelServiceName': service } }
           ],
           minimum_should_match: 1
         }

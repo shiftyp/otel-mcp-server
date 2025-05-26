@@ -2,6 +2,7 @@ import { ElasticsearchAdapter } from '../../adapters/elasticsearch/index.js';
 import { logger } from '../../utils/logger.js';
 import { MetricAnomalyDetector } from './metricAnomalyDetector.js';
 import { SpanAnomalyDetector } from './spanAnomalyDetector.js';
+import { MetricType } from '../otelMetrics.js';
 
 /**
  * Tool for basic anomaly detection over OTEL metrics and traces.
@@ -19,11 +20,20 @@ export class AnomalyDetectionTool {
   /**
    * Detect anomalies in a metric for a service and time window using a flexible hybrid approach.
    * Delegates to the MetricAnomalyDetector
+   * 
+   * @param startTime ISO8601 start time
+   * @param endTime ISO8601 end time
+   * @param metricField Required specific metric field to analyze
+   * @param metricType Required metric type to use for detection
+   * @param serviceOrServices Optional service name or array of services
+   * @param options Optional configuration parameters
+   * @returns Detected anomalies and statistics
    */
   async detectMetricAnomalies(
     startTime: string, 
     endTime: string, 
-    metricField?: string,
+    metricField: string,
+    metricType: MetricType,
     serviceOrServices?: string | string[], 
     options: {
       absoluteThreshold?: number;     // Absolute value threshold
@@ -39,6 +49,7 @@ export class AnomalyDetectionTool {
       startTime, 
       endTime, 
       metricField, 
+      metricType,
       serviceOrServices 
     });
     
@@ -46,6 +57,7 @@ export class AnomalyDetectionTool {
       startTime, 
       endTime, 
       metricField, 
+      metricType,
       serviceOrServices, 
       options
     );

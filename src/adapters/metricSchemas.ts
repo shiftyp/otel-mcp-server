@@ -41,7 +41,7 @@ export function extractMetricFieldPaths(props: Record<string, any>, prefix: stri
  * @returns Array of metric field paths
  */
 export async function getAllMetricFieldPaths(esRequest: (method: string, url: string) => Promise<any>): Promise<string[]> {
-  const resp = await esRequest('GET', '/.ds-metrics-*/_mapping');
+  const resp = await esRequest('GET', '/.ds-metrics-*,metrics*,*metrics*,*metric*,otel-metric*,prometheus*,system*,metricbeat*/_mapping');
   const fieldPaths: string[] = [];
 
   for (const index of Object.values(resp)) {
@@ -58,7 +58,7 @@ export async function getAllMetricFieldPaths(esRequest: (method: string, url: st
  * @returns Map of metric names to their field schemas
  */
 export async function getMetricSchemasWithFields(esRequest: (method: string, url: string) => Promise<any>): Promise<Array<{ metric: string, fields: string[] }>> {
-  const resp = await esRequest('GET', '/.ds-metrics-*/_mapping');
+  const resp = await esRequest('GET', '/.ds-metrics-*,metrics*,*metrics*,*metric*,otel-metric*,prometheus*,system*,metricbeat*/_mapping');
   const results: Array<{ metric: string, fields: string[] }> = [];
 
   function getParentAndField(props: Record<string, any>, prefix = ''): Array<{ metric: string, siblings: string[] }> {
@@ -94,7 +94,7 @@ export async function getMetricSchemasWithFields(esRequest: (method: string, url
  * @returns Map of metric names to their field schemas
  */
 export async function groupMetricSchemasByMetricName(esRequest: (method: string, url: string) => Promise<any>): Promise<GroupedMetricSchemas> {
-  const resp = await esRequest('GET', '/.ds-metrics-*/_mapping');
+  const resp = await esRequest('GET', '/.ds-metrics-*,metrics*,*metrics*,*metric*,otel-metric*,prometheus*,system*,metricbeat*/_mapping');
   const grouped: GroupedMetricSchemas = {};
 
   for (const index of Object.values(resp)) {

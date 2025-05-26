@@ -7,8 +7,8 @@ export class MetricsAdapter extends ElasticsearchCore {
    * @returns Array of { name, type }
    */
   public async listMetricFields(): Promise<Array<{ name: string, type: string }>> {
-    // Use a more inclusive pattern for metrics indices to match OpenTelemetry data
-    const resp = await this.request('GET', '/metrics*,*metrics*/_mapping').catch(err => {
+    // Use a comprehensive pattern to match all possible metrics indices
+    const resp = await this.request('GET', '/.ds-metrics-*,metrics*,*metrics*,*metric*,otel-metric*,prometheus*,system*,metricbeat*/_mapping').catch(err => {
       logger.warn('[ES Adapter] Error getting metrics mapping', { error: err });
       return {};
     });

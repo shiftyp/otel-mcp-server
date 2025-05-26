@@ -400,6 +400,8 @@ export class SpanAnomalyDetector {
         anomalies.push({
           ...anomalyInfo,
           threshold: absoluteThreshold,
+          expectedDuration: absoluteThreshold,
+          deviation: (duration - absoluteThreshold) / absoluteThreshold, // Normalized deviation
           detectionMethod: 'absolute_threshold'
         });
       }
@@ -411,7 +413,7 @@ export class SpanAnomalyDetector {
           ...anomalyInfo,
           zScore,
           expectedDuration: mean,
-          deviation: duration - mean,
+          deviation: Math.abs(zScore), // Use absolute z-score as deviation
           threshold: zScoreThreshold,
           detectionMethod: 'z_score'
         });
@@ -422,6 +424,8 @@ export class SpanAnomalyDetector {
         anomalies.push({
           ...anomalyInfo,
           percentile: percentileThreshold,
+          expectedDuration: p95,
+          deviation: (duration - p95) / p95, // Normalized deviation
           threshold: p95,
           detectionMethod: 'percentile'
         });
@@ -429,11 +433,12 @@ export class SpanAnomalyDetector {
       
       // 4. IQR detection
       if (duration < iqrLower || duration > iqrUpper) {
+        const threshold = duration > iqrUpper ? iqrUpper : iqrLower;
         anomalies.push({
           ...anomalyInfo,
           expectedDuration: mean,
-          deviation: duration - mean,
-          threshold: duration > iqrUpper ? iqrUpper : iqrLower,
+          deviation: Math.abs((duration - threshold) / (iqr || 1)), // Normalized by IQR
+          threshold: threshold,
           detectionMethod: 'iqr'
         });
       }

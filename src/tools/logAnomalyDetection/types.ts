@@ -4,7 +4,7 @@
 export interface LogAnomalyOptions {
   methods?: ('frequency' | 'pattern' | 'statistical' | 'clustering' | 'cardinality' | 'ngramSimilarity')[];
   lookbackWindow?: string;    // e.g., "7d" for 7-day baseline
-  interval?: string;          // e.g., "1h" for hourly buckets
+  interval?: string;          // e.g., "1h" for hourly, "1d" for daily, "1w" for weekly buckets
   spikeThreshold?: number;    // e.g., 3x normal frequency
   patternKeywords?: string[]; // Custom error patterns
   includeDefaultPatterns?: boolean;
@@ -41,6 +41,9 @@ export interface FrequencyAnomaly {
   level?: string;
   pattern?: string;
   score: number;
+  detectionMethod?: string;
+  type?: string;
+  message?: string;
 }
 
 /**

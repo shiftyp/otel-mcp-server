@@ -158,11 +158,19 @@ export class MetricAnomalyDetector {
 
   /**
    * Main method to detect anomalies in metrics
+   * @param startTime ISO8601 start time
+   * @param endTime ISO8601 end time
+   * @param metricField Required specific metric field to analyze
+   * @param metricType Required metric type to use for detection
+   * @param serviceOrServices Optional service name or array of services
+   * @param options Optional configuration parameters
+   * @returns Detected anomalies and statistics
    */
   async detectAnomalies(
     startTime: string, 
     endTime: string, 
-    metricField?: string,
+    metricField: string,
+    metricType: MetricType,
     serviceOrServices?: string | string[], 
     options: MetricAnomalyOptions = {}
   ): Promise<any> {
@@ -182,10 +190,8 @@ export class MetricAnomalyDetector {
         { range: { '@timestamp': { gte: startTime, lte: endTime } } }
       ];
       
-      // Add metric field filter if provided
-      if (metricField) {
-        must.push({ exists: { field: metricField } });
-      }
+      // Add metric field filter (now required)
+      must.push({ exists: { field: metricField } });
       
       // Add service filter - support both single service and array of services
       if (serviceOrServices) {
@@ -235,6 +241,8 @@ export class MetricAnomalyDetector {
           const metricFields = await this.esAdapter.listMetricFields();
           logger.info(`[Metric Anomaly] Found ${metricFields.length} metric fields from schema`);
           
+          let potentialMetricFields: string[] = [];
+          
           // If we found fields from schema, use them
           if (metricFields.length > 0) {
             // Filter to numeric fields only
@@ -247,47 +255,70 @@ export class MetricAnomalyDetector {
             logger.info(`[Metric Anomaly] Found ${numericFields.length} numeric metric fields`);
             
             // Extract the field names
-            const potentialMetricFields = new Set<string>();
-            numericFields.forEach((field: any) => potentialMetricFields.add(field.name));
+            const fieldsSet = new Set<string>();
+            numericFields.forEach((field: any) => fieldsSet.add(field.name));
             
             // If no potential metric fields found, try the fallback approach
-            if (potentialMetricFields.size === 0) {
+            if (fieldsSet.size === 0) {
               logger.info('[Metric Anomaly] No numeric fields found from schema, using fallback approach');
               const fields = await this.findPotentialMetricFields(must);
-              fields.forEach(field => potentialMetricFields.add(field));
+              fields.forEach(field => fieldsSet.add(field));
             }
             
-            // If still no potential metric fields found, return empty result
-            if (potentialMetricFields.size === 0) {
-              return { message: 'No numeric metric fields found in the data' };
-            }
-            
-            return Array.from(potentialMetricFields);
+            potentialMetricFields = Array.from(fieldsSet);
           } else {
             // If no fields found from schema, use the fallback approach
             logger.info('[Metric Anomaly] No fields found from schema, using fallback approach');
-            const potentialMetricFields = await this.findPotentialMetricFields(must);
-            
-            // If no potential metric fields found, return empty result
-            if (potentialMetricFields.size === 0) {
-              return { message: 'No numeric metric fields found in the data' };
-            }
-            
-            return Array.from(potentialMetricFields);
+            const fieldsSet = await this.findPotentialMetricFields(must);
+            potentialMetricFields = Array.from(fieldsSet);
           }
-        } catch (error) {
-          logger.error('[Metric Anomaly] Error identifying metric fields', { error });
-          
-          // Try the fallback approach
-          logger.info('[Metric Anomaly] Falling back to direct field detection');
-          const potentialMetricFields = await this.findPotentialMetricFields(must);
           
           // If no potential metric fields found, return empty result
-          if (potentialMetricFields.size === 0) {
-            return { message: 'No numeric metric fields found in the data' };
+          if (potentialMetricFields.length === 0) {
+            return { message: 'No numeric metric fields found in the data', anomalies: [] };
           }
           
-          return Array.from(potentialMetricFields);
+          // Process each potential metric field and collect anomalies
+          logger.info(`[Metric Anomaly] Processing ${potentialMetricFields.length} potential metric fields`);
+          
+          // Limit to a reasonable number of fields to avoid excessive processing
+          const fieldsToProcess = potentialMetricFields.slice(0, 5);
+          
+          // Process each field and collect anomalies
+          const allAnomalies: MetricAnomaly[] = [];
+          const fieldResults: any = {};
+          
+          for (const field of fieldsToProcess) {
+            try {
+              logger.info(`[Metric Anomaly] Processing field: ${field}`);
+              const result = await this.detectAnomalies(startTime, endTime, field, MetricType.GAUGE, serviceOrServices, options);
+              
+              if (result.anomalies && result.anomalies.length > 0) {
+                allAnomalies.push(...result.anomalies);
+                fieldResults[field] = {
+                  anomalyCount: result.anomalies.length,
+                  metricType: result.metricType
+                };
+              }
+            } catch (error) {
+              logger.error(`[Metric Anomaly] Error processing field: ${field}`, { error });
+            }
+          }
+          
+          // Sort all anomalies by deviation (descending) and limit to maxResults
+          const sortedAnomalies = allAnomalies
+            .sort((a, b) => (b.deviation || 0) - (a.deviation || 0))
+            .slice(0, maxResults);
+          
+          return {
+            anomalies: sortedAnomalies,
+            processedFields: fieldResults,
+            potentialFields: potentialMetricFields
+          };
+          
+        } catch (error) {
+          logger.error('[Metric Anomaly] Error identifying metric fields', { error });
+          return { message: 'Error identifying metric fields', error: String(error), anomalies: [] };
         }
       }
       
@@ -334,15 +365,14 @@ export class MetricAnomalyDetector {
         return { message: `No data found for metric field: ${metricField}` };
       }
       
-      // Detect the metric type to use the appropriate specialized detection method
-      logger.info(`[Metric Anomaly] Detecting metric type for: ${metricField}`);
-      const metricType = await this.detectMetricType(metricField, buckets);
-      logger.info(`[Metric Anomaly] Detected metric type: ${metricType} for field: ${metricField}`);
+      // Use the provided metric type or default to GAUGE
+      const detectedMetricType = metricType || MetricType.GAUGE;
+      logger.info(`[Metric Anomaly] Using metric type: ${detectedMetricType} for field: ${metricField}`);
       
       // Use the appropriate specialized detection method based on the metric type
       let result: { anomalies: MetricAnomaly[]; stats: any };
       
-      switch (metricType) {
+      switch (detectedMetricType) {
         case MetricType.GAUGE:
           logger.info(`[Metric Anomaly] Using gauge anomaly detection for: ${metricField}`);
           result = await GaugeAnomalyDetector.detectAnomalies(metricField, buckets, options);
@@ -378,7 +408,7 @@ export class MetricAnomalyDetector {
       const enhancedStats = {
         ...stats,
         ...detectionStats,
-        metricType,
+        metricType: detectedMetricType,
         percentiles,
         q1: percentiles['25.0'] || 0,
         q3: percentiles['75.0'] || 0,
@@ -398,7 +428,7 @@ export class MetricAnomalyDetector {
       return {
         anomalies: sortedAnomalies,
         stats: enhancedStats,
-        metricType,
+        metricType: detectedMetricType,
         service: typeof serviceOrServices === 'string' ? serviceOrServices : undefined,
         metricField
       };
