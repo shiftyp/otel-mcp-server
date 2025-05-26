@@ -37,6 +37,8 @@ To use OTEL MCP Server with tools like MCP Inspector or Windsurf, use the follow
 - **Connection Validation** - Automatic validation on startup
 - **Cross-Platform** - Windows, macOS, and Linux
 - **Dual Mapping Mode Support** - Compatible with both OTEL and ECS mapping modes in Elasticsearch
+- **Minimal Abstraction** - Transparent access to data without hiding query complexity
+- **Maximum Flexibility** - Full control over queries for customization
 
 ## 🔄 Elasticsearch Mapping Modes
 
@@ -110,8 +112,9 @@ This server exposes MCP tools for use with MCP-compatible clients (such as Winds
 
 The OTEL MCP Server dynamically registers tools based on available telemetry types in your Elasticsearch instance:
 
-- If traces, metrics, and logs are all available, all tools will be registered
-- If only certain telemetry types are available (e.g., only traces and logs), only the relevant tools will be registered
+- If traces are available, trace query tools (`tracesQuery`, `traceFieldsGet`) will be registered
+- If metrics are available, metric query tools (`metricsQuery`, `metricsFieldsGet`) will be registered
+- If logs are available, log query tools (`logsQuery`, `logFieldsGet`, `findLogs`) will be registered
 - Common tools like `servicesGet` adapt to use whatever telemetry is available
 
 This means the set of available tools may vary depending on your environment and data availability. The server automatically detects what's available and registers the appropriate tools.
@@ -149,7 +152,6 @@ This will return a list of all registered tools, which will reflect the availabl
   - Collates and deduplicates services from traces, metrics, and logs
   - Automatically adapts to available telemetry types (traces, metrics, logs)
   - Returns metadata about which telemetry types were used in the response
-
 ### Common Query Parameters
 
 All query tools support the following parameters:
@@ -164,6 +166,88 @@ All query tools support the following parameters:
 - `agg`: Simplified aggregation definition
 - `runtime_mappings`: Dynamic field definitions
 - `script_fields`: Computed fields using scripts
+
+## Example Prompts for LLMs
+
+Here are some example prompts you can use with LLMs that have access to this MCP server:
+
+### Exploring Data Structure
+
+- **Trace Fields**: "What fields are available in the trace data? Use the `traceFieldsGet` tool to find out."
+- **Error Log Fields**: "What fields should I look at for error analysis? Use `logFieldsGet` to find fields related to errors."
+- **Service Metrics**: "What metrics are available for the 'frontend' service? Use `metricsFieldsGet` to find relevant fields."
+
+### Service Discovery
+
+- **List Services**: "What services are available in the system? Use the `servicesGet` tool to list all services."
+- **Find Services**: "Are there any payment-related services? Use `servicesGet` with a search parameter."
+
+### Troubleshooting
+
+- **Error Traces**: "Find all error traces from the last 24 hours for the 'payment' service using `tracesQuery`."
+- **Recent Logs**: "Show me the most recent logs from the 'checkout' service using `logsQuery`."
+- **Resource Metrics**: "Get the CPU usage metrics for the 'api' service over the past hour using `metricsQuery`."
+
+### Incident Investigation
+
+- **Outage Analysis**: "Query traces during the outage period (2:00-3:00 PM today) for the 'authentication' service."
+- **Error Timeline**: "Find logs with error severity during the incident timeframe (May 23, 10:00-11:00 AM)."
+- **Authentication Issues**: "Find authentication failures or timeout errors during the incident using `logsQuery`."
+
+## Windsurf-Specific Prompts with Code Context
+
+When using this MCP server with [Windsurf](https://windsurf.com/editor), you can leverage both telemetry data and code context for more powerful analysis:
+
+### Exploring Code and Data Together
+
+- **Error Handling Fields**: "Find trace fields related to error handling in our API controllers and show where they're used in our code."
+- **Database Metrics**: "How do our database query metrics correlate with our ORM implementation? Analyze our access patterns."
+
+### Performance Analysis
+
+- **Slow Traces**: "Find slow traces in our payment service and analyze the code to identify performance bottlenecks."
+- **Resource Usage**: "Query CPU/memory metrics during peak loads and correlate with our resource allocation code."
+
+### Code-Aware Troubleshooting
+
+- **Auth Errors**: "Find recent authentication errors and analyze our auth middleware and token validation logic."
+- **API Failures**: "This endpoint returns 500 errors. Find recent traces and identify potential causes in the code."
+- **Latency Issues**: "The payment service has high latency. Find metrics and analyze our code for inefficiencies."
+
+### Root Cause Analysis
+
+- **Incident Investigation**: "Analyze telemetry from yesterday's incident (2:00-3:00 PM) and identify contributing code issues."
+- **Trace Analysis**: "This trace ID shows a failed checkout. Retrieve it and examine our checkout flow code for issues."
+
+### Performance Optimization
+
+- **Slow Database Queries**: "Find the slowest database operations and suggest optimizations (indexes, N+1 queries, joins)."
+- **API Response Times**: "Identify unusual patterns in API response times across services and review implementation code."
+- **Service Latency**: "Find slow spans in payment and checkout services from the last hour and suggest improvements."
+
+### Error Pattern Detection
+
+- **Log Patterns**: "Use aggregations to find unusual error patterns in the payment service over the last 2 hours."
+- **Cross-Service Errors**: "Analyze error patterns across microservices and suggest improvements to error handling."
+- **Authentication Failures**: "Find authentication failures during the incident timeframe using appropriate log fields."
+- **Incident Impact**: "Analyze which services were most affected during the incident and suggest investigation areas."
+
+### Cross-Service Analysis
+
+- **Checkout Flow Analysis**: "Analyze metrics, logs, and traces for our checkout flow to identify potential issues."
+- **Deployment Comparison**: "Compare payment service performance before and after deployment to identify changes."
+- **System-Wide Patterns**: "Find unusual patterns across our entire system during the incident window."
+
+### Advanced Elasticsearch Queries
+
+- **Correlated Logs**: "Find logs with correlation IDs matching error trace IDs from the last hour."
+- **Database Duration**: "Use script_fields to compute total database operation duration within each trace."
+- **Percentile Response Times**: "Create an aggregation showing 95th percentile response times by service and endpoint."
+
+### Custom Runtime Fields
+
+- **Error Code Extraction**: "Create a runtime field to extract and aggregate error codes from log messages."
+- **External Call Analysis**: "Calculate percentage of time spent in external service calls and find high-impact traces."
 
 ## 🔎 Example Queries
 
@@ -405,9 +489,9 @@ Key advantages:
 
 The OTEL MCP Server automatically adapts to the available data in your Elasticsearch instance:
 
-- If trace data is available, trace tools are registered
-- If metric data is available, metric tools are registered
-- If log data is available, log tools are registered
+- If trace data is available, trace query tools (`tracesQuery`, `traceFieldsGet`) are registered
+- If metric data is available, metric query tools (`metricsQuery`, `metricsFieldsGet`) are registered
+- If log data is available, log query tools (`logsQuery`, `logFieldsGet`, `findLogs`) are registered
 
 This ensures that you only see tools that will work with your available data. If a particular telemetry type is not available, the corresponding tools will not be registered, preventing you from attempting to use tools that would fail.
 
@@ -478,409 +562,7 @@ Contributions to the OTEL MCP Server are welcome! If you'd like to contribute:
 
 MIT
 
----
-
 Built with ❤️ for the OpenTelemetry community
-      "maxResults": 10,
-      "showData": true
-    }
-  }
-})
-```
-
-### Service Health Chart
-
-Time series visualization of service health metrics:
-
-```javascript
-// Generate a service health chart for CPU usage
-mcp0_generateMarkdownVisualizations({
-  "config": {
-    "timeRange": {
-      "start": "now-6h",
-      "end": "now"
-    },
-    "config": {
-      "type": "service-health",
-      "services": ["payment", "checkout", "inventory"],
-      "metricField": "system.cpu.usage",
-      "aggregation": "avg",
-      "intervalCount": 12,
-      "yAxisLabel": "CPU Usage (%)"
-    }
-  }
-})
-```
-
-### Service Dependency Graph
-
-Visualize the relationships and call patterns between services:
-
-```javascript
-// Generate a service dependency graph
-mcp0_generateMarkdownVisualizations({
-  "config": {
-    "timeRange": {
-      "start": "now-6h",
-      "end": "now"
-    },
-    "config": {
-      "type": "service-dependency",
-      "query": "Resource.service.name:payment" // Optional: filter to focus on specific services
-    }
-  }
-})
-```
-
-**Example Output:**
-
-```mermaid
-graph TD
-  A["checkout"]
-  B["frontend"]
-  C["flagd"]
-  D["shipping"]
-  E["cart"]
-  F["currency"]
-  G["frontend-proxy"]
-  H["payment"]
-  I["product-catalog"]
-  J["fraud-detection"]
-  K["load-generator"]
-  L["email"]
-  M["recommendation"]
-  N["ad"]
-  A --> |2 calls| B
-  A --> |4 calls| C
-  A --> |2 calls| D
-  A --> |4 calls| E
-  A --> |2 calls| F
-  A --> |2 calls| G
-  A --> |2 calls| H
-  A --> |4 calls| I
-  A --> |3 calls| J
-  A --> |4 calls| K
-  A --> |2 calls| L
-  # (Showing partial graph for readability)
-```
-
-
-```javascript
-// Generate a service dependency graph
-mcp0_generateMarkdownVisualizations({
-  "config": {
-    "timeRange": {
-      "start": "now-24h",
-      "end": "now"
-    },
-    "config": {
-      "type": "service-dependency",
-      "query": "Resource.service.name:payment OR Resource.service.name:checkout"
-    }
-  }
-})
-```
-
-**Example Output:**
-
-```mermaid
-graph TD
-  A["checkout"]
-  B["frontend"]
-  C["cart"]
-  D["payment"]
-  E["shipping"]
-  A --> |3 calls| B
-  A --> |6 calls| C
-  A --> |3 calls| D
-  A --> |4 calls| E
-  B --> |3 calls| A
-  B --> |1 calls| D
-  C --> |6 calls| A
-  C --> |3 calls| D
-  D --> |3 calls| A
-  E --> |4 calls| A
-```
-
-### Incident Graph
-
-Visualize the relationships between services during an incident:
-
-```javascript
-// Generate an incident graph showing service error relationships
-mcp0_generateMarkdownVisualizations({
-  "config": {
-    "timeRange": {
-      "start": "now-30d",
-      "end": "now"
-    },
-    "config": {
-      "type": "incident-graph"
-      // Optional parameters:
-      // "service": "frontend", // Focus on a specific service
-      // "query": "level:error" // Filter by query
-    }
-  }
-})
-```
-
-**Example Output:**
-
-```mermaid
-flowchart TD
-  load_generator["load-generator\n181 errors"]
-  recommendation["recommendation\n144 errors"]
-  frontend_proxy["frontend-proxy\n81 errors"]
-  frontend["frontend\n86 errors"]
-  checkout["checkout\n6 errors"]
-  product_catalog["product-catalog\n2 errors"]
-  load_generator --> recommendation
-  recommendation --> frontend
-  frontend --> frontend_proxy
-  frontend_proxy --> checkout
-  checkout --> product_catalog
-
-  classDef error fill:#f96, stroke:#333, stroke-width:2px;
-  class load_generator,recommendation,frontend_proxy,frontend,checkout,product_catalog error;
-```
-
-```javascript
-// Generate an incident graph focused on a specific service with a query filter
-mcp0_generateMarkdownVisualizations({
-  "config": {
-    "timeRange": {
-      "start": "now-7d",
-      "end": "now"
-    },
-    "config": {
-      "type": "incident-graph",
-      "service": "frontend", // Focus on the frontend service
-      "query": "level:error OR severity:error" // Filter for errors only
-    }
-  }
-})
-```
-
-### Span Gantt Chart
-
-Timeline visualization of spans in a distributed trace:
-
-```javascript
-// Generate a span gantt chart for a specific span
-mcp0_generateMarkdownVisualizations({
-  "config": {
-    "timeRange": {
-      "start": "now-7d",
-      "end": "now"
-    },
-    "config": {
-      "type": "span-gantt",
-      "spanId": "d97a9420de311bf1", // The span ID to visualize
-      "query": "service:frontend" // Optional: filter related spans
-    }
-  }
-})
-```
-
-**Example Output:**
-
-```mermaid
-gantt
-  dateFormat X
-  axisFormat %L ms
-  title Distributed Trace Timeline
-  %% Trace visualization chart
-  section frontend
-  GET :active, task_72ce9593, after 0ms, 187ms
-  GET /api/products/{productId} :active, task_36fed3a5, after 0ms, 186ms
-  executing api route (pages) /api/products/[productId] :active, task_d97a9420, after 0ms, 186ms
-  grpc.oteldemo.ProductCatalogService/GetProduct :active, task_2c928057, after 0ms, 186ms
-  section load-generator
-  GET :active, task_d99ac347, after 0ms, 188ms
-  section product-catalog
-  oteldemo.ProductCatalogService/GetProduct :active, task_1203c15e, after 0ms, 147ms
-```
-
-```javascript
-// Generate a span Gantt chart for a specific trace
-mcp0_generateMarkdownVisualizations({
-  "config": {
-    "timeRange": {
-      "start": "now-1h",
-      "end": "now"
-    },
-    "config": {
-      "type": "span-gantt",
-      "spanId": "abcdef1234567890"
-    }
-  }
-})
-```
-
-### Markdown Table
-
-Tabular representation of OTEL data:
-
-```javascript
-// Generate a custom markdown table from trace data
-mcp0_generateMarkdownVisualizations({
-  "config": {
-    "timeRange": {
-      "start": "now-1h",
-      "end": "now"
-    },
-    "config": {
-      "type": "markdown-table",
-      "headers": ["Timestamp", "Service", "Operation", "Duration", "Status"],
-      "queryType": "traces",
-      "query": {
-        "match": {
-          "Resource.service.name": "payment"
-        }
-      },
-      "fieldMappings": ["@timestamp", "Resource.service.name", "name", "duration", "status.code"],
-      "maxRows": 5,
-      "alignment": ["left", "left", "left", "right", "center"]
-    }
-  }
-})
-```
-
-**Example Output:**
-
-| Timestamp | Service | Operation | Duration | Status |
-|:----------|:--------|:----------|--------:|:------:|
-| 2025-05-25 19:42:15 | payment | Process Payment | 235ms | OK |
-| 2025-05-25 19:41:32 | payment | Validate Card | 45ms | OK |
-| 2025-05-25 19:40:18 | payment | Process Payment | 1250ms | ERROR |
-| 2025-05-25 19:39:55 | payment | Validate Card | 52ms | OK |
-| 2025-05-25 19:38:41 | payment | Process Refund | 187ms | OK |
-
-```javascript
-// Generate a markdown table of trace data
-mcp0_generateMarkdownVisualizations({
-  "config": {
-    "timeRange": {
-      "start": "now-1h",
-      "end": "now"
-    },
-    "config": {
-      "type": "markdown-table",
-      "headers": ["Timestamp", "Service", "Operation", "Duration", "Status"],
-      "fieldMappings": ["timestamp", "Resource.service.name", "name", "duration", "status.code"],
-      "queryType": "traces",
-      "query": {},
-      "maxRows": 20
-    }
-  }
-})
-```
-
-### Metrics Time Series Table
-
-Tabular representation of metrics over time intervals:
-
-```javascript
-// Generate a metrics time series table
-mcp0_generateMarkdownVisualizations({
-  "config": {
-    "timeRange": {
-      "start": "now-3h",
-      "end": "now"
-    },
-    "config": {
-      "type": "metrics-time-series-table",
-      "metricField": "system.cpu.usage",
-      "services": ["payment", "checkout", "inventory"],
-      "intervalCount": 6,
-      "formatValue": "decimal2",
-      "query": "name:system.cpu.usage"
-    }
-  }
-})
-```
-
-**Example Output:**
-
-| Service | 17:00 | 17:30 | 18:00 | 18:30 | 19:00 | 19:30 |
-|---------|-------|-------|-------|-------|-------|-------|
-| payment | 45.32 | 48.75 | 52.18 | 87.95 | 92.33 | 65.47 |
-| checkout | 32.15 | 35.42 | 38.67 | 42.18 | 40.25 | 38.92 |
-| inventory | 28.75 | 30.12 | 32.45 | 35.18 | 33.92 | 31.47 |
-
-```javascript
-// Generate a metrics time series table
-mcp0_generateMarkdownVisualizations({
-  "config": {
-    "timeRange": {
-      "start": "now-6h",
-      "end": "now"
-    },
-    "config": {
-      "type": "metrics-time-series-table",
-      "metricField": "system.memory.usage",
-      "services": ["payment", "checkout", "inventory"],
-      "intervalCount": 6,
-      "formatValue": "decimal2"
-    }
-  }
-})
-```
-
-### Incident Analysis
-
-Analyze incidents across multiple services:
-
-```javascript
-// Extract an incident graph spanning multiple services
-mcp0_extractIncidentGraph({
-  "startTime": "2025-05-23T13:00:00-04:00",
-  "endTime": "2025-05-23T14:00:00-04:00",
-  "services": ["payment", "checkout", "inventory"]
-})
-```
-
-### Example: Query a Specific Trace
-
-Request:
-```json
-{
-  "tool": "tracesQuery",
-  "params": {
-    "query": {
-      "query": {
-        "term": {
-          "trace.id": "<your-trace-id>"
-        }
-      },
-      "size": 100
-    }
-  }
-}
-```
-
-Response:
-```json
-{
-  "hits": {
-    "total": { "value": 12 },
-    "hits": [
-      {
-        "_source": {
-          "trace.id": "<your-trace-id>",
-          "span.id": "...",
-          "service.name": "...",
-          "span.name": "...",
-          "span.kind": "...",
-          "span.duration": 123456,
-          "span.status.code": "OK"
-        }
-      },
-      // ... more spans
-    ]
-  }
-}
-```
 
 ## 🧪 Testing with the OTEL Demo
 
@@ -1118,161 +800,6 @@ This project is licensed under the MIT License - see the [LICENSE](LICENSE) file
 You can pipe commands to the server:
 ```bash
 echo "query traces '{\"timeRange\": {\"start\": \"2023-01-01T00:00:00Z\", \"end\": \"2023-01-02T00:00:00Z\"}}'" | npm start
-```
-
-## Example Prompts for LLMs
-
-Here are some example prompts you can use with LLMs that have access to this MCP server:
-
-### Exploring Data Structure
-
-```
-What fields are available in the trace data? Use the traceFieldsGet tool to find out.
-```
-
-```
-I want to analyze logs related to errors. What fields should I look at? Use the logFieldsGet tool to find fields related to errors or exceptions.
-```
-
-```
-What metrics are available for the 'frontend' service? Use the metricsFieldsGet tool to find relevant metric fields for this service.
-```
-
-### Service Discovery
-
-```
-What services are available in the system? Use the servicesGet tool to list all services.
-```
-
-```
-Are there any services related to payment processing? Use the servicesGet tool with a search parameter.
-```
-
-### Troubleshooting
-
-```
-Find all error traces from the last 24 hours for the 'payment' service. Use the tracesQuery tool with a bool query.
-```
-
-```
-Show me the most recent logs from the 'checkout' service. Use the logsQuery tool with appropriate filters.
-```
-
-```
-Get the CPU usage metrics for the 'api' service over the past hour. Use the metricsQuery tool to query the relevant data.
-```
-
-### Incident Investigation
-
-```
-Query the traces during the outage period between 2:00 PM and 3:00 PM today. Focus on the 'authentication' service and look for error status codes.
-```
-
-```
-Use the logsQuery tool to find logs with error severity during the incident timeframe (May 23, 2025, 10:00-11:00 AM).
-```
-
-```
-Query the logs during the incident and look for any authentication failures or timeout errors using the logsQuery tool with a bool query.
-```
-
-## Windsurf-Specific Prompts with Code Context
-
-When using this MCP server with [Windsurf](https://windsurf.com/editor), you can leverage both telemetry data and code context for more powerful analysis. Here are some prompts designed specifically for Windsurf:
-
-### Exploring Code and Data Together
-
-```
-What fields are available in our trace data that correspond to the error handling in our API controllers? Use the traceFieldsGet tool to find relevant fields, then show me where these are used in our code.
-```
-
-```
-How do our database query metrics correlate with our ORM implementation? Use metricsFieldsGet to find database metrics, then analyze our database access patterns in the code.
-```
-
-### Performance Analysis
-
-```
-Use the tracesQuery tool to find slow traces in our payment processing service, then help me analyze the corresponding code to identify performance bottlenecks.
-```
-
-```
-Query the metrics data for CPU and memory usage patterns during peak load times, then correlate this with our resource allocation in the code.
-```
-
-### Code-Aware Troubleshooting
-
-```
-I'm seeing errors in the authentication service. Use the logsQuery tool to find recent authentication errors, then analyze the relevant code in our codebase to identify potential issues. Focus on the auth middleware and token validation logic.
-```
-
-```
-This API endpoint is returning 500 errors. Use the tracesQuery tool to find recent traces for this endpoint, then examine the code to identify what might be causing the failures. Look for error handling, database queries, and external service calls.
-```
-
-```
-The 'payment-service' is showing high latency. Use the metricsFieldsGet tool to find relevant metrics, then analyze the performance of our payment processing code. Identify any inefficient algorithms, blocking calls, or resource bottlenecks.
-```
-
-### Root Cause Analysis
-
-```
-We had an incident yesterday between 2:00-3:00 PM. Use the tracesQuery and logsQuery tools to analyze the data from this time period, then correlate the affected services with our codebase. Identify which code changes might have contributed to the issue and suggest fixes.
-```
-
-```
-This trace ID shows a failed checkout: <trace-id>. Use the tracesQuery tool to retrieve this trace and then examine our checkout flow code to determine what went wrong. Suggest code improvements to prevent this issue in the future.
-```
-
-### Performance Optimization
-
-```
-Our database queries are slow according to the traces. Use the tracesQuery tool to find the slowest database operations, then analyze our database access code and suggest optimizations. Look for missing indexes, N+1 queries, or inefficient joins.
-```
-
-```
-Use the metricsQuery tool to find unusual patterns in our API response times across all services, then review the API implementation code to identify potential performance bottlenecks. Focus on metrics with high values.
-```
-
-```
-Find slow spans in our payment and checkout services for the last hour using the tracesQuery tool with appropriate filters. Then suggest code improvements for the slowest operations.
-```
-
-### Error Pattern Detection
-
-```
-Use the logsQuery tool with aggregations to find unusual log patterns in our payment service over the last 2 hours. Focus on error frequency and patterns. Analyze the results to identify potential issues and suggest fixes.
-```
-
-```
-Analyze error patterns across our microservices using the logsQuery tool with appropriate filters and aggregations. Then examine our error handling code to identify common failure modes and suggest improvements to our error handling and resilience patterns.
-```
-
-```
-Use the logFieldsGet tool to find all available log fields for our authentication service, then use those fields with the logsQuery tool to search for authentication failures during the incident timeframe (May 23, 2025, 1:00-2:00 PM).
-```
-
-```
-Use the tracesQuery and logsQuery tools to analyze the incident data across our payment, checkout, and inventory services. Identify which services were most affected and suggest areas to investigate further.
-```
-
-### Cross-Service Analysis
-
-```
-Perform a comprehensive analysis of our checkout flow by:
-1. Using metricsFieldsGet to find all available metric fields for the checkout service
-2. Using metricsQuery to analyze those metrics for unusual patterns
-3. Using logsQuery to search for error patterns in the checkout service logs
-4. Using tracesQuery to analyze slow spans in the checkout process
-Then provide a summary of potential issues and recommendations.
-```
-
-```
-Compare the performance of our payment service before and after the recent deployment. Use the metricsQuery and tracesQuery tools to identify any regressions or improvements. Focus on both the payment service itself and any services it depends on.
-```
-
-```
-Use the logsQuery tool with appropriate aggregations to find unusual patterns across our entire system during the incident window. Group the results by service and focus on the most severe errors.
 ```
 
 ## Building for Production
