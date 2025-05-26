@@ -4,6 +4,7 @@ import type { MCPToolOutput } from '../../types.js';
 import type { McpServer } from '@modelcontextprotocol/sdk/server/mcp.js';
 import { ElasticsearchAdapter } from '../../adapters/elasticsearch/index.js';
 import { registerMcpTool } from '../../utils/registerTool.js';
+import { escapeMermaidString, escapeMermaidAxisLabels } from '../../utils/mermaidEscaper.js';
 
 /**
  * Tool for generating field distribution pie charts
@@ -111,6 +112,14 @@ export class FieldDistributionPieChartTool {
         ]
       }
     };
+    
+    // Add .keyword suffix for string fields if not already present
+    const fieldName = field.endsWith('.keyword') ? field : 
+                    (dataType === 'logs' || dataType === 'traces') && 
+                    !field.includes('.status_code') && 
+                    !field.includes('@timestamp') && 
+                    !field.match(/\d+$/) ? 
+                    `${field}.keyword` : field;
 
     // Add the custom query if provided
     if (query) {
@@ -146,7 +155,7 @@ export class FieldDistributionPieChartTool {
     const aggregation = {
       field_values: {
         terms: {
-          field: field,
+          field: fieldName,
           size: maxSlices
         }
       }
@@ -193,15 +202,17 @@ export class FieldDistributionPieChartTool {
     // Add pie directive with optional showData
     mermaidLines.push(showData ? 'pie showData' : 'pie');
     
-    // Add title
+    // Add title with escaped special characters
     const chartTitle = title || `Distribution of ${field}`;
-    mermaidLines.push(`    title ${chartTitle}`);
+    mermaidLines.push(`    title ${escapeMermaidString(chartTitle)}`);
     
-    // Add data points
+    // Add data points with escaped keys
     for (const bucket of buckets) {
       const key = bucket.key || 'unknown';
       const count = bucket.doc_count || 0;
-      mermaidLines.push(`    "${key}" : ${count}`);
+      // Escape the key to handle special characters
+      const escapedKey = escapeMermaidString(key);
+      mermaidLines.push(`    "${escapedKey}" : ${count}`);
     }
     
     return mermaidLines.join('\n');

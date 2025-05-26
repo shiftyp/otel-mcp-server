@@ -10,10 +10,11 @@
  * @param isAxisLabel Whether this is an axis label (requires more strict escaping)
  * @returns The escaped string safe for use in Mermaid
  */
-export function escapeMermaidString(input: string, isAxisLabel: boolean = false): string {
-  if (!input) return '';
+export function escapeMermaidString(input: string | null | undefined, isAxisLabel: boolean = false): string {
+  if (input === null || input === undefined || input === '') return '';
   
-  let escaped = input;
+  // Ensure input is a string
+  let escaped = String(input);
   
   // Replace newlines and carriage returns
   escaped = escaped.replace(/\r/g, '').replace(/\n/g, ' ');

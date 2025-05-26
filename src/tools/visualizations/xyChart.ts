@@ -124,6 +124,37 @@ export class XYChartTool {
   }
 
   /**
+   * Helper method to determine if a field is likely numeric based on its name
+   * This is a heuristic approach since we don't have direct field type information
+   */
+  private isLikelyNumericField(fieldName: string, dataType: 'logs' | 'traces' | 'metrics'): boolean {
+    // Fields that are definitely numeric
+    if (
+      fieldName === 'Duration' ||
+      fieldName.includes('.duration') ||
+      fieldName.includes('.status_code') ||
+      fieldName.includes('.count') ||
+      fieldName.includes('.value') ||
+      fieldName.includes('.size') ||
+      fieldName.includes('.bytes') ||
+      fieldName.includes('.length') ||
+      fieldName.includes('.time') ||
+      fieldName.includes('.timestamp') ||
+      fieldName === '@timestamp' ||
+      fieldName.match(/\d+$/) // Ends with digits
+    ) {
+      return true;
+    }
+
+    // Metrics fields are generally numeric
+    if (dataType === 'metrics') {
+      return true;
+    }
+
+    return false;
+  }
+
+  /**
    * Generate a Mermaid XY chart based on the specified parameters
    */
   public async generateXYChart(
@@ -188,10 +219,19 @@ export class XYChartTool {
       // Multi-series chart with series field
       // Add .keyword suffix for string fields if not already present
       const seriesFieldName = seriesField.endsWith('.keyword') ? seriesField : 
-                            (dataType === 'logs' || dataType === 'traces') ? `${seriesField}.keyword` : seriesField;
+                            (dataType === 'logs' || dataType === 'traces') && !this.isLikelyNumericField(seriesField, dataType) ? 
+                            `${seriesField}.keyword` : seriesField;
+      
+      // Handle x-field - only add .keyword for non-numeric fields
       const xFieldName = xField.endsWith('.keyword') ? xField : 
-                       (dataType === 'logs' || dataType === 'traces') && !xField.includes('.status_code') && !xField.includes('@timestamp') ? 
+                       (dataType === 'logs' || dataType === 'traces') && !this.isLikelyNumericField(xField, dataType) ? 
                        `${xField}.keyword` : xField;
+      
+      // Handle y-field - only add .keyword for non-numeric fields
+      // This is especially important for aggregation fields like Duration
+      const yFieldName = yField.endsWith('.keyword') ? yField : 
+                       (dataType === 'logs' || dataType === 'traces') && !this.isLikelyNumericField(yField, dataType) ? 
+                       `${yField}.keyword` : yField;
       
       aggregations = {
         series: {
@@ -221,17 +261,23 @@ export class XYChartTool {
         aggregations.series.aggs.x_values.aggs = {
           y_value: {
             [aggregation]: {
-              field: yField
+              field: yFieldName
             }
           }
         };
       }
     } else {
       // Single series chart
-      // Add .keyword suffix for string fields if not already present
+      // Handle x-field - only add .keyword for non-numeric fields
       const xFieldName = xField.endsWith('.keyword') ? xField : 
-                       (dataType === 'logs' || dataType === 'traces') && !xField.includes('.status_code') && !xField.includes('@timestamp') ? 
+                       (dataType === 'logs' || dataType === 'traces') && !this.isLikelyNumericField(xField, dataType) ? 
                        `${xField}.keyword` : xField;
+      
+      // Handle y-field - only add .keyword for non-numeric fields
+      // This is especially important for aggregation fields like Duration
+      const yFieldName = yField.endsWith('.keyword') ? yField : 
+                       (dataType === 'logs' || dataType === 'traces') && !this.isLikelyNumericField(yField, dataType) ? 
+                       `${yField}.keyword` : yField;
       
       aggregations = {
         x_values: {
@@ -250,7 +296,7 @@ export class XYChartTool {
         aggregations.x_values.aggs = {
           y_value: {
             [aggregation]: {
-              field: yField
+              field: yFieldName
             }
           }
         };
@@ -283,10 +329,19 @@ export class XYChartTool {
         
         // Add y-value aggregation if not using count
         if (aggregation !== 'count' && yField) {
+          // Use the properly formatted field name for y-field
+          const yFieldName = yField.endsWith('.keyword') ? yField : 
+                           (dataType === 'logs' || dataType === 'traces') && 
+                           !yField.includes('.status_code') && 
+                           !yField.includes('@timestamp') && 
+                           !yField.includes('.duration') && 
+                           !yField.match(/\d+$/) ? 
+                           `${yField}.keyword` : yField;
+                           
           aggregations.series.aggs.time_buckets.aggs = {
             y_value: {
               [aggregation]: {
-                field: yField
+                field: yFieldName
               }
             }
           };
@@ -304,10 +359,19 @@ export class XYChartTool {
         
         // Add y-value aggregation if not using count
         if (aggregation !== 'count' && yField) {
+          // Use the properly formatted field name for y-field
+          const yFieldName = yField.endsWith('.keyword') ? yField : 
+                           (dataType === 'logs' || dataType === 'traces') && 
+                           !yField.includes('.status_code') && 
+                           !yField.includes('@timestamp') && 
+                           !yField.includes('.duration') && 
+                           !yField.match(/\d+$/) ? 
+                           `${yField}.keyword` : yField;
+                           
           aggregations.time_buckets.aggs = {
             y_value: {
               [aggregation]: {
-                field: yField
+                field: yFieldName
               }
             }
           };
@@ -507,7 +571,23 @@ export class XYChartTool {
     
     // Add x-axis with escaped labels
     const xAxis = xAxisTitle || xField;
-    mermaidLines.push(`    x-axis "${escapeMermaidString(xAxis)}" [${escapeMermaidAxisLabels(xLabels)}]`);
+    
+    // Special handling for timestamps to avoid Mermaid lexical errors
+    let formattedXLabels = xLabels;
+    if (xField === '@timestamp') {
+      // For timestamps, use quotes with properly escaped colons
+      formattedXLabels = xLabels.map(label => {
+        // Escape colons in the timestamp
+        const escapedLabel = label.replace(/:/g, '#58;');
+        // Wrap in quotes for Mermaid
+        return `"${escapedLabel}"`;
+      });
+      // Join without additional escaping since we've already handled it
+      mermaidLines.push(`    x-axis "${escapeMermaidString(xAxis)}" [${formattedXLabels.join(',')}]`);
+    } else {
+      // For non-timestamp fields, use the standard escaping
+      mermaidLines.push(`    x-axis "${escapeMermaidString(xAxis)}" [${escapeMermaidAxisLabels(formattedXLabels)}]`);
+    }
     
     // Add y-axis with escaped label
     const yAxis = yAxisTitle || yField;
@@ -515,12 +595,63 @@ export class XYChartTool {
     
     // Add data series
     const seriesNames = Object.keys(yValues);
-    for (const seriesName of seriesNames) {
-      // For single series, don't include the series name
-      if (seriesNames.length === 1 && seriesName === 'default') {
-        mermaidLines.push(`    ${chartType} [${yValues[seriesName].join(',')}]`);
+    
+    // For bar charts, we need a single series with values corresponding to x-axis labels
+    if (chartType === 'bar') {
+      // For Mermaid bar charts, values must be provided as a single array
+      // The array length must match the number of x-axis labels
+      if (seriesNames.length === 0) {
+        // No data case - provide default values matching x-axis labels count
+        const defaultValues = new Array(xLabels.length || 1).fill(0);
+        mermaidLines.push(`    ${chartType} [${defaultValues.join(',')}]`);
+      } else if (seriesNames.length > 1 && multiSeries) {
+        // For multiple series, combine them into a single array
+        const combinedValues: number[] = [];
+        
+        // For each x-label, add values from all series
+        for (let i = 0; i < xLabels.length; i++) {
+          let sum = 0;
+          for (const seriesName of seriesNames) {
+            if (yValues[seriesName] && yValues[seriesName][i] !== undefined) {
+              sum += yValues[seriesName][i];
+            }
+          }
+          combinedValues.push(sum || 0); // Use 0 if sum is falsy
+        }
+        
+        // Add the combined bar chart
+        mermaidLines.push(`    ${chartType} [${combinedValues.join(',')}]`);
       } else {
-        mermaidLines.push(`    ${chartType} "${seriesName}" [${yValues[seriesName].join(',')}]`);
+        // Single series bar chart
+        const seriesName = seriesNames[0];
+        // Ensure we have values that match x-axis labels
+        if (yValues[seriesName] && yValues[seriesName].length > 0) {
+          // Make sure all values are numbers, replace undefined/null with 0
+          const cleanValues = yValues[seriesName].map(v => v || 0);
+          mermaidLines.push(`    ${chartType} [${cleanValues.join(',')}]`);
+        } else {
+          // Fallback for empty data - provide values matching x-axis labels count
+          const defaultValues = new Array(xLabels.length || 1).fill(0);
+          mermaidLines.push(`    ${chartType} [${defaultValues.join(',')}]`);
+        }
+      }
+    } else {
+      // For line and scatter charts, keep the existing multi-series behavior
+      for (const seriesName of seriesNames) {
+        // Check if the series has any non-zero/non-empty values
+        const hasValues = yValues[seriesName].some(value => value !== undefined && value !== null && value !== 0);
+        
+        // Only include series with actual values
+        if (hasValues) {
+          // For single series, don't include the series name
+          if (seriesNames.length === 1 && seriesName === 'default') {
+            mermaidLines.push(`    ${chartType} [${yValues[seriesName].join(',')}]`);
+          } else {
+            // Escape the series name to handle special characters
+            const escapedSeriesName = escapeMermaidString(seriesName);
+            mermaidLines.push(`    ${chartType} "${escapedSeriesName}" [${yValues[seriesName].join(',')}]`);
+          }
+        }
       }
     }
     

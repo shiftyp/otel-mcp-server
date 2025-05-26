@@ -4,6 +4,7 @@ import type { MCPToolOutput } from '../../types.js';
 import type { McpServer } from '@modelcontextprotocol/sdk/server/mcp.js';
 import { ElasticsearchAdapter } from '../../adapters/elasticsearch/index.js';
 import { registerMcpTool } from '../../utils/registerTool.js';
+import { escapeMermaidString } from '../../utils/mermaidEscaper.js';
 
 /**
  * Tool for generating error distribution pie charts
@@ -175,13 +176,15 @@ export class ErrorPieChartTool {
       // Add pie directive with optional showData
       mermaidLines.push(showData ? 'pie showData' : 'pie');
       
-      // Add title
+      // Add title with escaped special characters
       const chartTitle = title || 'Error Distribution by Service';
-      mermaidLines.push(`    title ${chartTitle}`);
+      mermaidLines.push(`    title ${escapeMermaidString(chartTitle)}`);
       
-      // Add data points
+      // Add data points with escaped service names
       for (const [service, count] of sortedServices) {
-        mermaidLines.push(`    "${service}" : ${count}`);
+        // Escape the service name to handle special characters
+        const escapedService = escapeMermaidString(service);
+        mermaidLines.push(`    "${escapedService}" : ${count}`);
       }
       
       return mermaidLines.join('\n');

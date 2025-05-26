@@ -4,6 +4,7 @@ import type { MCPToolOutput } from '../../types.js';
 import type { McpServer } from '@modelcontextprotocol/sdk/server/mcp.js';
 import { ElasticsearchAdapter } from '../../adapters/elasticsearch/index.js';
 import { registerMcpTool } from '../../utils/registerTool.js';
+import { escapeMermaidString, escapeMermaidAxisLabels } from '../../utils/mermaidEscaper.js';
 
 /**
  * Tool for generating service health charts
@@ -208,18 +209,19 @@ export class ServiceHealthChartTool {
     // Build the Mermaid chart
     const mermaidLines = ['xychart-beta'];
     
-    // Add title
+    // Add title with escaped special characters
     const chartTitle = title || 'Service Metrics';
-    mermaidLines.push(`    title "${chartTitle}"`);
+    mermaidLines.push(`    title "${escapeMermaidString(chartTitle)}"`);
     
-    // Format x-axis with time intervals
+    // Format x-axis with time intervals and escape labels
     const xAxisLabels = intervals.map(interval => 
       new Date(interval).toLocaleTimeString([], {hour: '2-digit', minute:'2-digit'})
     );
-    mermaidLines.push(`    x-axis [${xAxisLabels.map(l => `"${l}"`).join(', ')}]`);
+    // Use escapeMermaidAxisLabels for proper escaping of all labels
+    mermaidLines.push(`    x-axis [${xAxisLabels.map(l => `"${escapeMermaidString(l, true)}"`).join(', ')}]`);
     
-    // Format y-axis
-    const yAxisText = yAxisLabel || 'Value';
+    // Format y-axis with escaped label
+    const yAxisText = escapeMermaidString(yAxisLabel || 'Value');
     
     // Calculate min and max values from the data if not provided
     let calculatedMin = Number.MAX_VALUE;
@@ -265,7 +267,8 @@ export class ServiceHealthChartTool {
       const { service, metrics } = servicesData[0];
       const dataPoints = metrics.map(m => m.value || 0).join(', ');
       mermaidLines.push(`    line [${dataPoints}]`);
-      mermaidLines.push(`    title "${service}"`);
+      // Escape service name for title
+      mermaidLines.push(`    title "${escapeMermaidString(service)}"`);
     } else if (servicesData.length > 1) {
       // For multiple services, calculate the average value at each time point
       const intervalCount = servicesData[0]?.metrics.length || 0;
@@ -340,9 +343,9 @@ export class ServiceHealthChartTool {
       const dataPoints = aggregatedResult.join(', ');
       mermaidLines.push(`    line [${dataPoints}]`);
       
-      // Create a combined title with aggregation method
-      const serviceNames = servicesData.map(({ service }) => service).join(', ');
-      mermaidLines.push(`    title "${aggregationName} of ${serviceNames}"`);
+      // Create a combined title with aggregation method and escaped service names
+      const serviceNames = servicesData.map(({ service }) => escapeMermaidString(service)).join(', ');
+      mermaidLines.push(`    title "${escapeMermaidString(aggregationName)} of ${serviceNames}"`);
     }
     
     return mermaidLines.join('\n');

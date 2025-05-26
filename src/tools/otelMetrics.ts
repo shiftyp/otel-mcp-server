@@ -65,94 +65,93 @@ export class OtelMetricsTools {
    * @returns Object containing fields array and co-occurrences map
    */
   async getAllMetricFields(search?: string, serviceOrServices?: string | string[], useSourceDocument: boolean = false): Promise<{ fields: string[], coOccurrences: Record<string, string[]> }> {
-    // If no service filter, use the standard approach
-    if (!serviceOrServices) {
-      const allFields: string[] = await getAllMetricFieldPaths(this.esAdapter.callEsRequest.bind(this.esAdapter));
-      
-      // Apply search filter if provided
-      let filteredFields = allFields;
-      if (search && search.trim() !== '') {
-        const s = search.toLowerCase();
-        filteredFields = allFields.filter(f => f.toLowerCase().includes(s));
-      }
-      
-      // Since we don't have document data in this case, return with empty co-occurrences
-      return {
-        fields: filteredFields,
-        coOccurrences: {}
-      };
-    }
-
-    // Convert service parameter to array for consistent handling
-    const services = Array.isArray(serviceOrServices) ? serviceOrServices : [serviceOrServices];
+    // Get all field paths from mapping first for a complete list
+    let allFields: string[] = [];
+    const fieldSet = new Set<string>();
+    const fieldCoOccurrences: Record<string, Set<string>> = {};
     
-    // Build a query to get a sample of documents from the specified services
-    const query = {
+    try {
+      allFields = await getAllMetricFieldPaths(this.esAdapter.callEsRequest.bind(this.esAdapter));
+      logger.debug('[OtelMetricsTools] getAllMetricFields mapping fields', { count: allFields.length });
+      
+      // Add all fields to the set
+      allFields.forEach(field => fieldSet.add(field));
+    } catch (error) {
+      logger.error('[OtelMetricsTools] Error getting field mappings', { error });
+    }
+    
+    // Build a query to get a sample of documents
+    const query: any = {
       size: 100,
       query: {
         bool: {
           must: [
             { exists: { field: '@timestamp' } }
-          ],
-          filter: services.length > 0 ? [
-            { terms: { 'service.name': services } }
-          ] : []
+          ]
         }
       },
       // Use _source parameter based on useSourceDocument setting
       _source: useSourceDocument ? true : ['*']
     };
     
-    // Execute the query to get sample documents
-    const response = await this.esAdapter.queryMetrics(query);
-    const hits = response.hits?.hits || [];
-    
-    if (hits.length === 0) {
-      return {
-        fields: [],
-        coOccurrences: {}
-      };
+    // Add service filter if provided
+    if (serviceOrServices) {
+      // Convert service parameter to array for consistent handling
+      const services = Array.isArray(serviceOrServices) ? serviceOrServices : [serviceOrServices];
+      if (services.length > 0) {
+        query.query.bool.filter = [
+          { terms: { 'Resource.service.name': services } }
+        ];
+      }
     }
     
-    // Extract all field paths and track co-occurring fields
-    const fieldSet = new Set<string>();
-    const fieldCoOccurrences: Record<string, Set<string>> = {};
-    
-    // Helper function to recursively extract field paths
-    const extractFields = (obj: any, path = '', result: string[] = []) => {
-      if (!obj || typeof obj !== 'object') return result;
+    // Execute the query to get sample documents
+    try {
+      const response = await this.esAdapter.queryMetrics(query);
+      const hits = response.hits?.hits || [];
       
-      Object.entries(obj).forEach(([key, value]) => {
-        const currentPath = path ? `${path}.${key}` : key;
-        result.push(currentPath);
-        fieldSet.add(currentPath);
+      logger.debug('[OtelMetricsTools] getAllMetricFields sample documents', { count: hits.length });
+      
+      if (hits.length > 0) {
+        // Helper function to recursively extract field paths
+        const extractFields = (obj: any, path = '', result: string[] = []) => {
+          if (!obj || typeof obj !== 'object') return result;
+          
+          Object.entries(obj).forEach(([key, value]) => {
+            const currentPath = path ? `${path}.${key}` : key;
+            result.push(currentPath);
+            fieldSet.add(currentPath);
+            
+            if (value && typeof value === 'object' && !Array.isArray(value)) {
+              extractFields(value, currentPath, result);
+            }
+          });
+          
+          return result;
+        };
         
-        if (value && typeof value === 'object' && !Array.isArray(value)) {
-          extractFields(value, currentPath, result);
-        }
-      });
-      
-      return result;
-    };
-    
-    // Process each document to find co-occurring fields
-    hits.forEach((hit: any) => {
-      const docFields = extractFields(hit._source);
-      
-      // Update co-occurrence information for each field in this document
-      docFields.forEach(field => {
-        if (!fieldCoOccurrences[field]) {
-          fieldCoOccurrences[field] = new Set<string>();
-        }
-        
-        // Add all other fields as co-occurring with this field
-        docFields.forEach(coField => {
-          if (field !== coField) {
-            fieldCoOccurrences[field].add(coField);
-          }
+        // Process each document to find co-occurring fields
+        hits.forEach((hit: any) => {
+          const docFields = extractFields(hit._source);
+          
+          // Update co-occurrence information for each field in this document
+          docFields.forEach(field => {
+            if (!fieldCoOccurrences[field]) {
+              fieldCoOccurrences[field] = new Set<string>();
+            }
+            
+            // Add all other fields as co-occurring with this field
+            docFields.forEach(coField => {
+              if (field !== coField) {
+                fieldCoOccurrences[field].add(coField);
+              }
+            });
+          });
         });
-      });
-    });
+      }
+    } catch (error) {
+      logger.error('[OtelMetricsTools] Error querying sample documents', { error });
+    }
     
     // Convert to array and apply search filter if provided
     let fields = Array.from(fieldSet);
@@ -161,6 +160,14 @@ export class OtelMetricsTools {
       const s = search.toLowerCase();
       fields = fields.filter(f => f.toLowerCase().includes(s));
     }
+    
+    // Create co-occurrences for all fields, even those without document samples
+    // This ensures every field in our result has an entry in the co-occurrences map
+    fields.forEach(field => {
+      if (!fieldCoOccurrences[field]) {
+        fieldCoOccurrences[field] = new Set<string>();
+      }
+    });
     
     // Return field paths along with co-occurrence information
     return {
