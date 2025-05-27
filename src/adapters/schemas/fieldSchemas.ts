@@ -101,7 +101,8 @@ function processProperties(
 export async function getFieldStats(
   esClient: ElasticsearchAdapter,
   indexPattern: string,
-  search?: string
+  search?: string,
+  serviceOrServices?: string | string[]
 ): Promise<FieldInfo[]> {
   try {
     // First get the field mappings
@@ -120,14 +121,42 @@ export async function getFieldStats(
     const fieldStats: FieldInfo[] = [];
     
     for (const [fieldName, fieldInfo] of filteredFields) {
+      // Build query to find documents containing the field
+      const query: any = {
+        bool: {
+          must: [
+            {
+              exists: {
+                field: fieldName
+              }
+            }
+          ]
+        }
+      };
+      
+      // Add service filter if provided
+      if (serviceOrServices) {
+        // Convert to array if string
+        const services = Array.isArray(serviceOrServices) ? serviceOrServices : [serviceOrServices];
+        
+        // Build service filter query with exact term matching
+        const serviceTerms = services.map(service => ({
+          term: { 'resource.attributes.service.name': service }
+        }));
+        
+        // Add to main query
+        query.bool.must.push({
+          bool: {
+            should: serviceTerms,
+            minimum_should_match: 1
+          }
+        });
+      }
+      
       // Get document count for this field
       const countResponse = await esClient.callEsRequest('POST', `/${indexPattern}/_search`, {
         size: 0,
-        query: {
-          exists: {
-            field: fieldName
-          }
-        }
+        query
       });
       
       const count = countResponse.hits?.total?.value || 0;
@@ -137,13 +166,10 @@ export async function getFieldStats(
       
       if (count > 0) {
         // Sample a few documents with this field to find co-occurring fields
+        // Use the same query with service filter that we used for counting
         const sampleResponse = await esClient.callEsRequest('POST', `/${indexPattern}/_search`, {
           size: 5,
-          query: {
-            exists: {
-              field: fieldName
-            }
-          }
+          query
         });
         
         // Extract all fields from the sample documents

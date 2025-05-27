@@ -19,12 +19,12 @@ export function registerMetricTools(server: McpServer, esAdapter: ElasticsearchA
     server,
     'metricsFieldsGet',
     { 
-      search: z.string().optional().describe('Search term to filter metric fields'),
+      search: z.string().describe('Search term to filter metric fields. Pass an empty string to return all fields'),
       service: z.string().optional().describe('Service name - Filter fields to only those present in data from this service. Use servicesGet tool to find available services'),
       services: z.array(z.string()).optional().describe('Services array - Filter fields to only those present in data from these services. Takes precedence over service parameter if both are provided. Use servicesGet tool to find available services'),
       useSourceDocument: z.boolean().optional().default(false).describe('Whether to include source document fields (default: false for metrics)')
     },
-    async (args: { search?: string, service?: string, services?: string[], useSourceDocument?: boolean }, _extra: unknown) => {
+    async (args: { search?: string, service?: string, services?: string[], useSourceDocument?: boolean } = {}, _extra: unknown) => {
       try {
         logger.info('[MCP TOOL] searchMetricsFields called', { args });
         
@@ -37,7 +37,14 @@ export function registerMetricTools(server: McpServer, esAdapter: ElasticsearchA
         }
         
         // Get actual field types from Elasticsearch using the MetricsAdapter
+        logger.info('[MCP TOOL] About to call listMetricFields');
         const metricFields = await esAdapter.listMetricFields();
+        
+        // Log the raw metric fields returned from the adapter
+        logger.info('[MCP TOOL] Raw metric fields from adapter', { 
+          count: metricFields.length,
+          fields: JSON.stringify(metricFields)
+        });
         
         // Create a map of field names to their types
         const fieldTypeMap = new Map<string, string>();
@@ -60,11 +67,76 @@ export function registerMetricTools(server: McpServer, esAdapter: ElasticsearchA
           );
         }
         
-        // Filter by service if provided
+        // Filter by service if provided - only apply filtering when serviceFilter is explicitly provided
         if (serviceFilter) {
-          // TODO: Implement service filtering for metrics
-          // This would require additional queries to find which fields exist in data from the specified service(s)
-          logger.warn('[MCP TOOL] Service filtering for metrics not yet implemented', { serviceFilter });
+          // Implement service filtering for metrics using exact term matching
+          try {
+            // Convert to array if string
+            const services = Array.isArray(serviceFilter) ? serviceFilter : [serviceFilter];
+            
+            // Build a query to find documents matching the exact service names using term queries
+            // This ensures exact matching without wildcards or partial matching
+            const serviceQuery: any = {
+              bool: {
+                should: services.map(service => ({
+                  term: { 'resource.attributes.service.name': service }
+                })),
+                minimum_should_match: 1
+              }
+            };
+            
+            // Query Elasticsearch to get a sample of documents from these services
+            const response = await esAdapter.callEsRequest('POST', '/metrics*/_search', {
+              size: 100,
+              query: serviceQuery,
+              _source: true
+            });
+            
+            // If we got results, extract field names from the documents
+            if (response.hits?.hits?.length > 0) {
+              const fieldsInService = new Set<string>();
+              
+              // Extract field names from all returned documents
+              for (const hit of response.hits.hits) {
+                if (hit._source) {
+                  // Recursively extract field names
+                  const extractFields = (obj: any, prefix: string) => {
+                    if (!obj || typeof obj !== 'object') return;
+                    
+                    for (const key in obj) {
+                      const fullPath = prefix ? `${prefix}.${key}` : key;
+                      fieldsInService.add(fullPath);
+                      
+                      if (obj[key] && typeof obj[key] === 'object' && !Array.isArray(obj[key])) {
+                        extractFields(obj[key], fullPath);
+                      }
+                    }
+                  };
+                  
+                  extractFields(hit._source, '');
+                }
+              }
+              
+              // Filter the fields to only include those found in the service documents
+              filteredFields = filteredFields.filter(field => fieldsInService.has(field.name));
+              
+              logger.info('[MCP TOOL] Filtered metrics fields by service', { 
+                serviceFilter, 
+                originalCount: metricFields.length,
+                filteredCount: filteredFields.length 
+              });
+            } else {
+              // No documents found for the service(s), return empty array
+              logger.warn('[MCP TOOL] No metrics found for the specified service(s)', { serviceFilter });
+              filteredFields = [];
+            }
+          } catch (error) {
+            logger.error('[MCP TOOL] Error filtering metrics fields by service', { 
+              serviceFilter,
+              error: error instanceof Error ? error.message : String(error)
+            });
+            // On error, continue with unfiltered fields
+          }
         }
         
         // Sort fields by name

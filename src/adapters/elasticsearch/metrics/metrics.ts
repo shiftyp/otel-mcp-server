@@ -7,34 +7,63 @@ export class MetricsAdapter extends ElasticsearchCore {
    * @returns Array of { name, type }
    */
   public async listMetricFields(): Promise<Array<{ name: string, type: string }>> {
+    logger.info('[ES Adapter] listMetricFields called');
+    
     // Use a comprehensive pattern to match all possible metrics indices
+    logger.info('[ES Adapter] About to request metrics mapping');
     const resp = await this.request('GET', '/.ds-metrics-*,metrics*,*metrics*,*metric*,otel-metric*,prometheus*,system*,metricbeat*/_mapping').catch(err => {
-      logger.warn('[ES Adapter] Error getting metrics mapping', { error: err });
+      logger.warn('[ES Adapter] Error getting metrics mapping', { error: err.message, stack: err.stack });
       return {};
     });
-    // Use a local ignoreFields set, as in the original logic
+    
+    logger.info('[ES Adapter] Got metrics mapping response', { 
+      responseKeys: Object.keys(resp),
+      responseSize: JSON.stringify(resp).length
+    });
+    
+    // If no indices were found, return an empty array
+    if (Object.keys(resp).length === 0) {
+      logger.info('[ES Adapter] No metrics indices found, returning empty array');
+      return [];
+    }
+    // Use a minimal ignoreFields set for metrics
     const ignoreFields = new Set([
-      '@timestamp', 'service', 'host', 'k8s', 'receiver', 'scraper', 'server', 'url', 'net', '_id', '_index',
-      'event', 'agent', 'ecs', 'cloud', 'container', 'orchestrator', 'labels', 'tags', 'log', 'trace', 'span',
-      'transaction', 'parent', 'destination', 'source', 'client', 'process', 'observer', 'metricset', 'input',
-      'fields', 'beat', 'message', 'type', 'name', 'namespace', 'version', 'runtime', 'node', 'instance',
-      'deployment', 'pod', 'os', 'platform', 'ip', 'start_time', 'uid', 'address', 'port', 'scheme', 'reason',
-      'key', 'provider_name', 'evaluation', 'flagd', 'feature_flag', 'scraped_metric_points', 'errored_metric_points'
+      '_id', '_index', '_score', '_source', '_type', '_version'
     ]);
     const fieldMap: Record<string, string> = {};
+    
+    // Recursive function to extract fields with full paths
+    const extractFields = (properties: Record<string, any>, prefix: string = '') => {
+      for (const [field, val] of Object.entries(properties)) {
+        const fullPath = prefix ? `${prefix}.${field}` : field;
+        
+        // Skip ignored fields
+        if (ignoreFields.has(field)) continue;
+        
+        if (typeof val === 'object' && val !== null) {
+          // If it has a type, it's a field
+          if ('type' in val) {
+            fieldMap[fullPath] = val.type;
+          }
+          
+          // If it has properties, recursively process them
+          if (val.properties && typeof val.properties === 'object') {
+            extractFields(val.properties, fullPath);
+          }
+          
+          // Handle special case for metrics fields that might be in nested structures
+          if (field === 'metrics' || field === 'metric' || field === 'value') {
+            fieldMap[fullPath] = val.type || 'object';
+          }
+        }
+      }
+    };
+    
+    // Process each index
     for (const idx of Object.keys(resp)) {
       const props = resp[idx]?.mappings?.properties;
       if (!props) continue;
-      for (const [field, val] of Object.entries(props)) {
-        if (
-          !ignoreFields.has(field) && 
-          typeof val === 'object' && 
-          val !== null && 
-          'type' in val
-        ) {
-          fieldMap[field] = (val as any).type;
-        }
-      }
+      extractFields(props);
     }
     
     // Convert to array of { name, type } and sort by name

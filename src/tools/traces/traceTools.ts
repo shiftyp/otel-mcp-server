@@ -57,12 +57,12 @@ export function registerTraceTools(server: McpServer, esAdapter: ElasticsearchAd
     server,
     'traceFieldsGet',
     { 
-      search: z.string().optional().describe('Filter fields by name pattern'),
+      search: z.string().describe('Filter fields by name pattern. Pass an empty string to return all fields'),
       service: z.string().optional().describe('Filter to fields from a specific service. Use servicesGet tool to find available services'),
       services: z.array(z.string()).optional().describe('Filter to fields from multiple services (overrides service parameter). Use servicesGet tool to find available services'),
       includeSourceFields: z.boolean().optional().default(false).describe('Include source document fields in results')
     },
-    async (args: { search?: string, service?: string, services?: string[], includeSourceFields?: boolean }, _extra: unknown) => {
+    async (args: { search?: string, service?: string, services?: string[], includeSourceFields?: boolean } = {}, _extra: unknown) => {
       try {
         logger.info('[MCP TOOL] traceFieldsSchema called', { args });
         
@@ -75,11 +75,22 @@ export function registerTraceTools(server: McpServer, esAdapter: ElasticsearchAd
         }
         
         // Get trace fields, filtered by service if specified
-        // Use the new parameter name, with fallback to default value
-        const includeSourceFields = args.includeSourceFields !== undefined ? args.includeSourceFields : false;
-        const fields = await traceFieldsTool.getTraceFields(args.search, serviceFilter, includeSourceFields);
+        // Pass the parameters as-is, letting the implementation handle defaults
+        const fields = await traceFieldsTool.getTraceFields(args.search, serviceFilter, args.includeSourceFields);
         
-        const output: MCPToolOutput = { content: [{ type: 'text', text: JSON.stringify(fields, null, 2) }] };
+        // Format the output to match other fields tools
+        const result = {
+          totalFields: fields.length,
+          fields: fields.map(field => ({
+            name: field.name,
+            type: field.type,
+            count: field.count,
+            schema: field.schema,
+            path: field.path
+          }))
+        };
+        
+        const output: MCPToolOutput = { content: [{ type: 'text', text: JSON.stringify(result, null, 2) }] };
         logger.info('[MCP TOOL] traceFieldsSchema result', { args, fieldCount: fields.length });
         return output;
       } catch (error) {

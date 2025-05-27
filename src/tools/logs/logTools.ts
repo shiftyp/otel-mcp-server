@@ -18,12 +18,12 @@ export function registerLogTools(server: McpServer, esAdapter: ElasticsearchAdap
     server,
     'logFieldsGet',
     { 
-      search: z.string().optional().describe('Filter fields by name pattern'),
+      search: z.string().describe('Filter fields by name pattern. Pass an empty string to return all fields'),
       service: z.string().optional().describe('Filter to fields from a specific service. Use servicesGet tool to find available services'),
       services: z.array(z.string()).optional().describe('Filter to fields from multiple services (overrides service parameter). Use servicesGet tool to find available services'),
       useSourceDocument: z.boolean().optional().default(true).describe('Include source document fields in results')
     },
-    async (args: { search?: string, service?: string, services?: string[], useSourceDocument?: boolean }, extra: unknown) => {
+    async (args: { search?: string, service?: string, services?: string[], useSourceDocument?: boolean } = {}, extra: unknown) => {
       try {
         logger.info('[MCP TOOL] logFieldsSchema called', { args });
         
@@ -36,6 +36,7 @@ export function registerLogTools(server: McpServer, esAdapter: ElasticsearchAdap
         }
         
         // Get log fields, filtered by service if specified
+        // Pass the parameters as-is, letting the implementation handle defaults
         const fields = await logFieldsTool.getLogFields(args.search, serviceFilter, args.useSourceDocument);
         
         // Format the output

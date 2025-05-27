@@ -25,7 +25,7 @@ export class TraceFieldsTool {
    * @param useSourceDocument Whether to include source document fields (default: false for traces)
    * @returns Array of field information objects
    */
-  async getTraceFields(search?: string, serviceOrServices?: string | string[], useSourceDocument: boolean = false): Promise<FieldInfo[]> {
+  async getTraceFields(search?: string, serviceOrServices?: string | string[], useSourceDocument?: boolean): Promise<FieldInfo[]> {
     try {
       logger.info('[TraceFieldsTool] Getting trace fields', { search, serviceOrServices });
       
@@ -42,17 +42,26 @@ export class TraceFieldsTool {
           size: 100,
           query: {
             bool: {
-              must: [
-                { exists: { field: 'span.id' } }
-              ],
               filter: [
-                { terms: { 'resource.service.name': services } }
+                {
+                  bool: {
+                    should: services.map(service => ({
+                      term: { 'resource.attributes.service.name': service }
+                    })),
+                    minimum_should_match: 1
+                  }
+                }
               ]
             }
           },
-          // Use _source parameter based on useSourceDocument setting
-          _source: useSourceDocument ? true : ['*']
+          // Use _source parameter based on useSourceDocument setting (default to false if undefined)
+          _source: useSourceDocument === true ? true : ['*']
         };
+        
+        logger.info('[TraceFieldsTool] Querying for spans with service filter', { 
+          services,
+          query: JSON.stringify(query, null, 2)
+        });
         
         // Execute the query to get sample spans
         const response = await this.esAdapter.queryTraces(query);

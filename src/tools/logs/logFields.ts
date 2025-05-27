@@ -28,14 +28,16 @@ export class LogFieldsTool {
   async getLogFields(
     search?: string,
     serviceOrServices?: string | string[],
-    useSourceDocument: boolean = true
+    useSourceDocument?: boolean
   ): Promise<FieldInfo[]> {
     try {
       logger.debug('[LogFieldsTool] getLogFields called', { search, serviceOrServices, useSourceDocument });
       
       // Get all log fields from Elasticsearch
       // Using any type assertion since the adapter method might not be properly typed
-      const logFields = await (this.esAdapter as any).listLogFields(useSourceDocument);
+      // Default to true if useSourceDocument is undefined
+      const includeSourceDoc = useSourceDocument === undefined ? true : useSourceDocument;
+      const logFields = await (this.esAdapter as any).listLogFields(includeSourceDoc);
       
       // Filter fields by search term if provided
       let filteredFields = logFields;
@@ -48,42 +50,17 @@ export class LogFieldsTool {
       
       // Filter by service if provided
       if (serviceOrServices) {
-        // Convert to array if string
-        const services = Array.isArray(serviceOrServices) ? serviceOrServices : [serviceOrServices];
-        
-        // Build service filter query
-        const serviceQueries = services.map(service => {
-          return {
-            term: {
-              'resource.attributes.service.name': service
-            }
-          };
-        });
-        
-        // Query to find fields that exist in the specified service(s)
-        const query = {
-          bool: {
-            must: [
-              {
-                bool: {
-                  should: serviceQueries,
-                  minimum_should_match: 1
-                }
-              }
-            ]
-          }
-        };
-        
-        // Get field stats for the filtered fields
+        // Get field stats for the filtered fields, passing the service filter
         const fieldStats = await getFieldStats(
           this.esAdapter,
           '.ds-logs-*',
-          filteredFields.map((f: any) => f.name)
+          undefined, // No additional field name filtering here
+          serviceOrServices // Pass the service or services directly
         );
         
         // Only keep fields that exist in the service(s)
         filteredFields = filteredFields.filter((field: any) => {
-          const stats = fieldStats.find((s: any) => s.field === field.name);
+          const stats = fieldStats.find((s: any) => s.name === field.name);
           return stats && stats.count > 0;
         });
       }

@@ -323,7 +323,16 @@ export class LogsAdapter extends ElasticsearchCore {
       logger.debug('[LogsAdapter] listLogFields called', { includeSourceDocument });
       
       // Use a comprehensive pattern to match all possible log indices
-      const resp = await this.request('GET', '/logs*,*logs*/_mapping');
+      const resp = await this.request('GET', '/logs*,*logs*/_mapping').catch(err => {
+        logger.warn('[LogsAdapter] Error getting logs mapping', { error: err });
+        return {};
+      });
+      
+      // If no indices were found, return an empty array
+      if (Object.keys(resp).length === 0) {
+        logger.info('[LogsAdapter] No log indices found, returning empty array');
+        return [];
+      }
       
       // Extract fields from the mapping response
       const fields: Array<{ name: string, type: string, count: number, schema: any }> = [];
