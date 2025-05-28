@@ -90,15 +90,35 @@ export class ElasticsearchCore extends EventEmitter {
   
   /**
    * Make a request to Elasticsearch
+   * Enhanced with better error handling and request validation
    */
   protected async request(method: string, url: string, data?: any, config?: any): Promise<any> {
     try {
       const requestId = uuidv4();
-      logger.debug(`[ES:${requestId}] Request`, { method, url, data });
+      
+      // Validate and sanitize the request URL
+      // Ensure URL starts with a slash and doesn't have trailing slashes
+      const sanitizedUrl = url.startsWith('/') ? url : `/${url}`;
+      
+      // Validate the request data for search operations
+      if (method.toUpperCase() === 'POST' && sanitizedUrl.includes('_search') && data) {
+        // Log a warning for very large result sizes but don't limit them
+        // Note: Elasticsearch's default max result window is 10,000 documents
+        if (data.size && typeof data.size === 'number' && data.size > 10000) {
+          logger.warn(`[ES:${requestId}] Large result size requested (${data.size}). Note that Elasticsearch's default max_result_window is 10000.`, { method, url });
+        }
+        
+        // Ensure track_total_hits is enabled for accurate result counts
+        if (data.track_total_hits === undefined) {
+          data.track_total_hits = true;
+        }
+      }
+      
+      logger.debug(`[ES:${requestId}] Request`, { method, sanitizedUrl, data });
       
       const response = await this.client.request({
         method,
-        url,
+        url: sanitizedUrl,
         data,
         ...config,
       });
@@ -107,25 +127,44 @@ export class ElasticsearchCore extends EventEmitter {
         status: response.status,
         statusText: response.statusText,
         headers: response.headers,
+        hits: response.data?.hits?.total?.value,
       });
       
       return response.data;
     } catch (error) {
       if (axios.isAxiosError(error)) {
         const axiosError = error as AxiosError;
+        const responseData = axiosError.response?.data as any;
+        
+        // Extract detailed Elasticsearch error information
+        const esError = responseData?.error;
+        const rootCause = esError?.root_cause?.[0];
+        
         logger.error('Elasticsearch request failed', {
           method,
           url,
           status: axiosError.response?.status,
           statusText: axiosError.response?.statusText,
           message: axiosError.message,
-          response: axiosError.response?.data,
+          type: esError?.type,
+          reason: esError?.reason || rootCause?.reason,
+          index: rootCause?.index,
         });
+        
+        // Enhance error with Elasticsearch specific details
+        if (esError) {
+          const enhancedError = new Error(
+            `Elasticsearch error: ${esError.type || 'unknown'} - ${esError.reason || rootCause?.reason || axiosError.message}`
+          );
+          (enhancedError as any).esError = esError;
+          (enhancedError as any).status = axiosError.response?.status;
+          throw enhancedError;
+        }
       } else {
         logger.error('Elasticsearch request failed with non-Axios error', {
           method,
           url,
-          error,
+          error: error instanceof Error ? error.message : String(error),
         });
       }
       throw error;

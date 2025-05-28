@@ -5,7 +5,7 @@ import { registerTraceTools } from './traces/traceTools.js';
 import { registerMetricTools } from './metrics/metricTools.js';
 import { registerLogTools } from './logs/logTools.js';
 import { registerCommonTools } from './common/commonTools.js';
-import { ElasticGuards, ElasticsearchDataError } from '../utils/elasticGuards.js';
+import { ElasticGuards, ElasticsearchDataError } from '../utils/guards/index.js';
 import { logger } from '../utils/logger.js';
 
 /**

@@ -418,6 +418,76 @@ mcp0_servicesGet({
 
 ```
 
+## 🔍 Advanced Query Capabilities
+
+All query tools (`logsQuery`, `tracesQuery`, `metricsQuery`) support powerful query capabilities through various parameters that map directly to Elasticsearch's native functionality.
+
+### Logical Operators
+
+- `AND`: Require all conditions to match (default operator)
+- `OR`: Match any of the conditions
+- `NOT`: Exclude results that match a condition
+- Parentheses `()`: Group conditions for complex logic
+
+### Field-Specific Searches
+
+Use the `field:value` syntax to search specific fields:
+
+```javascript
+// Search for errors in the frontend service
+mcp0_logsQuery({
+  "search": "severity_text:ERROR AND resource.attributes.service.name:frontend"
+})
+```
+
+### Time Range Queries
+
+Use range syntax for time-based queries:
+
+```javascript
+// Search for errors in the last hour
+mcp0_logsQuery({
+  "search": "@timestamp:[now-1h TO now] AND severity_text:ERROR"
+})
+
+// Search for high latency spans in a specific time window
+mcp0_tracesQuery({
+  "search": "@timestamp:[2025-05-27T00:00:00Z TO 2025-05-27T04:00:00Z] AND duration>1000000"
+})
+```
+
+### Wildcards and Regular Expressions
+
+Use wildcards for partial matching:
+
+```javascript
+// Search for metrics with names containing 'latency'
+mcp0_metricsQuery({
+  "search": "name:*latency*"
+})
+
+// Search for HTTP-related spans
+mcp0_tracesQuery({
+  "search": "attributes.http.*:* AND service.name:frontend"
+})
+```
+
+### Numeric Comparisons
+
+Use comparison operators for numeric fields:
+
+```javascript
+// Find high-value metrics
+mcp0_metricsQuery({
+  "search": "metric.value>100 AND service.name:cart"
+})
+
+// Find slow spans
+mcp0_tracesQuery({
+  "search": "duration>5000000 AND name:*checkout*"
+})
+```
+
 ### Example Test Queries
 
 ```javascript
@@ -433,6 +503,77 @@ mcp0_tracesQuery({
     "query": { "match_all": {} },
     "size": 10,
     "sort": [{ "@timestamp": "desc" }]
+  }
+})
+
+// Using the simplified search parameter with logical query
+mcp0_logsQuery({
+  "search": "severity_text:ERROR AND resource.attributes.service.name:load-generator",
+  "size": 5
+})
+```
+
+### Advanced Elasticsearch Parameters
+
+All query tools now support additional Elasticsearch parameters for more advanced use cases:
+
+#### Result Tracking and Pagination
+
+```javascript
+// Get accurate hit counts for large result sets
+mcp0_logsQuery({
+  "search": "severity_text:ERROR",
+  "track_total_hits": true
+})
+
+// Efficient pagination through large result sets
+// First query to get initial results and sort values
+const initialResults = await mcp0_tracesQuery({
+  "search": "duration>1000000",
+  "size": 10,
+  "sort": [{"duration": "desc"}, {"@timestamp": "desc"}]
+});
+
+// Follow-up query using search_after with the sort values from the last result
+mcp0_tracesQuery({
+  "search": "duration>1000000",
+  "size": 10,
+  "sort": [{"duration": "desc"}, {"@timestamp": "desc"}],
+  "search_after": initialResults.hits.hits[initialResults.hits.hits.length-1].sort
+})
+```
+
+#### Performance and Timeout Controls
+
+```javascript
+// Set a timeout to prevent long-running queries
+mcp0_metricsQuery({
+  "search": "name:*latency*",
+  "timeout": "5s"
+})
+```
+
+#### Result Highlighting and Deduplication
+
+```javascript
+// Highlight search terms in results
+mcp0_logsQuery({
+  "search": "error",
+  "highlight": {
+    "fields": {
+      "body": {},
+      "message": {}
+    },
+    "pre_tags": ["<mark>"],
+    "post_tags": ["</mark>"]
+  }
+})
+
+// Deduplicate results by collapsing on a field
+mcp0_tracesQuery({
+  "search": "error",
+  "collapse": {
+    "field": "service.name"
   }
 })
 ```

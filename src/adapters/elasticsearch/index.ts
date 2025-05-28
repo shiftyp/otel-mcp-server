@@ -1,5 +1,5 @@
 import { ElasticsearchCore, ElasticsearchAdapterOptions } from './core/core.js';
-import { TracesAdapter } from './traces/traces.js';
+import { TracesAdapter } from './traces/index.js';
 import { MetricsAdapter } from './metrics/metrics.js';
 import { LogsAdapter } from './logs/logs.js';
 import { EventEmitter } from 'events';
@@ -40,8 +40,415 @@ export class ElasticsearchAdapter extends EventEmitter {
     return this.tracesAdapter.spanLookup(spanId);
   }
   
-  public async serviceDependencyGraph(startTime: string, endTime: string): Promise<{ parent: string, child: string, count: number, errorCount?: number, errorRate?: number }[]> {
-    return this.tracesAdapter.serviceDependencyGraph(startTime, endTime);
+  public async serviceDependencyGraph(startTime: string, endTime: string, sampleRate: number = 1.0): Promise<{ 
+    relationships: { parent: string, child: string, count: number, errorCount?: number, errorRate?: number }[],
+    spanCounts: { processed: number, total: number, percentage: string }
+  }> {
+    return this.tracesAdapter.serviceDependencyGraph(startTime, endTime, sampleRate);
+  }
+  
+  /**
+   * Build a service dependency tree structure with relationship-specific metrics and nested paths
+   * @param directRelationships The direct relationships between services
+   * @returns A hierarchical tree structure representing service dependencies with detailed metrics
+   */
+  public async buildServiceDependencyTree(
+    directRelationships: { parent: string, child: string, count: number, errorCount?: number, errorRate?: number }[]
+  ): Promise<{ 
+    rootServices: string[];
+    serviceTree: Map<string, {
+      children: {
+        serviceName: string;
+        metrics: {
+          calls: number;
+          errors: number;
+          errorRate: number;
+          errorRatePercentage: number;
+        };
+        path: {
+          minLatency?: number;
+          maxLatency?: number;
+          avgLatency?: number;
+          p95Latency?: number;
+          p99Latency?: number;
+        };
+      }[];
+      parents: {
+        serviceName: string;
+        metrics: {
+          calls: number;
+          errors: number;
+          errorRate: number;
+          errorRatePercentage: number;
+        };
+      }[];
+      metrics: {
+        incomingCalls: number;
+        outgoingCalls: number;
+        errors: number;
+        errorRate: number;
+        errorRatePercentage: number;
+      };
+    }>;
+  }> {
+    return this.tracesAdapter.buildServiceDependencyTree(directRelationships);
+  }
+  
+  public async getServicePathsWithErrorRates(
+    startTime: string, 
+    endTime: string, 
+    options: {
+      service?: string,
+      minCallCount?: number,
+      maxPaths?: number,
+      sortBy?: 'calls' | 'errors' | 'errorRate',
+      maxDepth?: number
+    } = {}
+  ): Promise<{
+    // Service architecture map for LLM understanding
+    serviceMap: Array<{
+      service: string,
+      outboundCalls: Array<{
+        target: string,
+        calls: number,
+        errors: number,
+        errorRate: number,
+        errorRatePercentage: number
+      }>
+    }>,
+    // Detailed paths through the system
+    paths: Array<{
+      path: string,
+      services: string[],
+      length: number,
+      metrics: {
+        calls: number,
+        errors: number,
+        errorRate: number,
+        errorRatePercentage: number,
+        callsPerMinute: number,
+        stages: Array<{
+          source: string,
+          target: string,
+          calls: number,
+          errors: number,
+          errorRate: number,
+          errorRatePercentage: number
+        }>
+      }
+    }>,
+    summary: {
+      totalPaths: number,
+      displayedPaths: number,
+      timePeriod: {
+        start: string,
+        end: string,
+        durationMinutes: number
+      }
+    },
+    metadata: {
+      message: string,
+      filteredBy: string,
+      sortedBy: string
+    }
+  }> {
+    logger.info('[ES Adapter] Getting service paths with error rates', { startTime, endTime, options });
+    
+    // Get the direct relationships between services
+    const dependencyData = await this.tracesAdapter.serviceDependencyGraph(startTime, endTime);
+    const { relationships: edges, spanCounts } = dependencyData;
+    
+    // Calculate time range in milliseconds for rate calculations
+    const timeRangeMs = new Date(endTime).getTime() - new Date(startTime).getTime();
+    const minutesInRange = timeRangeMs / (1000 * 60);
+    
+    // Build a graph representation for path finding
+    const graph = new Map<string, Set<string>>();
+    const relationshipMap = new Map<string, { count: number, errors: number }>();
+    
+    // Initialize the graph with direct relationships
+    for (const rel of edges) {
+      if (!graph.has(rel.parent)) {
+        graph.set(rel.parent, new Set<string>());
+      }
+      graph.get(rel.parent)!.add(rel.child);
+      
+      // Store relationship metrics
+      const key = `${rel.parent}|${rel.child}`;
+      relationshipMap.set(key, { 
+        count: rel.count, 
+        errors: rel.errorCount || 0 
+      });
+    }
+    
+    // Find all paths using DFS with early pruning
+    const allPaths: Array<{
+      path: string[],
+      calls: number,
+      errors: number,
+      errorRate: number,
+      errorRatePercentage: number,
+      stageMetrics: Array<{
+        source: string,
+        target: string,
+        calls: number,
+        errors: number,
+        errorRate: number
+      }>
+    }> = [];
+    
+    // Set default values
+    const minCallCount = options.minCallCount ?? 1;
+    const maxPaths = options.maxPaths ?? 50;
+    const sortBy = options.sortBy ?? 'calls';
+    
+    // Helper function to find all paths from source to all possible destinations
+    const findAllPaths = (source: string, currentPath: string[] = [], visited = new Set<string>()): boolean => {
+      // Add current node to path and mark as visited
+      currentPath.push(source);
+      visited.add(source);
+      
+      // Get the maximum path depth (default to 10 if not specified)
+      const maxPathDepth = options.maxDepth || 10;
+      
+      // If this is a leaf node or we've reached the maximum path depth, record the path
+      const neighbors = graph.get(source) || new Set<string>();
+      if (neighbors.size === 0 || currentPath.length > maxPathDepth) {
+        if (currentPath.length > 1) {
+          // Calculate metrics for this path
+          let totalCalls = Infinity;
+          let totalErrors = 0;
+          
+          // Collect detailed metrics for each stage in the path
+          const stageMetrics: Array<{
+            source: string,
+            target: string,
+            calls: number,
+            errors: number,
+            errorRate: number
+          }> = [];
+          
+          for (let i = 0; i < currentPath.length - 1; i++) {
+            const source = currentPath[i];
+            const target = currentPath[i + 1];
+            const key = `${source}|${target}`;
+            const metrics = relationshipMap.get(key);
+            
+            if (metrics) {
+              // Bottleneck approach - minimum calls along the path
+              totalCalls = Math.min(totalCalls, metrics.count);
+              totalErrors += metrics.errors;
+              
+              // Add detailed metrics for this stage
+              const stageErrorRate = metrics.errors / metrics.count;
+              stageMetrics.push({
+                source,
+                target,
+                calls: metrics.count,
+                errors: metrics.errors,
+                errorRate: stageErrorRate
+              });
+            }
+          }
+          
+          // Only include paths with enough calls
+          if (totalCalls >= minCallCount && totalCalls !== Infinity) {
+            const errorRate = totalCalls > 0 ? totalErrors / totalCalls : 0;
+            
+            // Filter by service if specified
+            const includeThisPath = !options.service || currentPath.includes(options.service);
+            
+            if (includeThisPath) {
+              allPaths.push({
+                path: [...currentPath],
+                calls: totalCalls,
+                errors: totalErrors,
+                errorRate,
+                errorRatePercentage: Math.round(errorRate * 10000) / 100,
+                stageMetrics: stageMetrics
+              });
+              
+              // Early termination if we've found enough paths
+              // This prevents excessive memory usage
+              if (allPaths.length >= maxPaths * 3) {
+                return true; // Signal to stop searching
+              }
+            }
+          }
+        }
+        return false;
+      } else {
+        // Continue DFS with early pruning
+        for (const neighbor of neighbors) {
+          // Avoid cycles
+          if (!visited.has(neighbor)) {
+            // Create a new visited set to avoid modifying the original
+            const newVisited = new Set(visited);
+            
+            // If findAllPaths returns true, we've found enough paths
+            if (findAllPaths(neighbor, [...currentPath], newVisited)) {
+              return true;
+            }
+          }
+        }
+      }
+      return false;
+    };
+    
+    // Find root services (those with no incoming edges)
+    const allServices = new Set<string>();
+    const servicesWithIncomingEdges = new Set<string>();
+    
+    for (const [parent, children] of graph.entries()) {
+      allServices.add(parent);
+      for (const child of children) {
+        allServices.add(child);
+        servicesWithIncomingEdges.add(child);
+      }
+    }
+    
+    const rootServices = Array.from(allServices).filter(service => !servicesWithIncomingEdges.has(service));
+    
+    logger.info('[ES Adapter] Finding paths from root services', { 
+      rootServices, 
+      totalServices: allServices.size 
+    });
+    
+    // Start DFS from all root services
+    for (const rootService of rootServices) {
+      // If we've found enough paths, stop searching
+      if (allPaths.length >= maxPaths * 3) {
+        break;
+      }
+      
+      findAllPaths(rootService);
+    }
+    
+    // If we didn't find any paths from root services and a specific service was requested,
+    // try starting from that service
+    if (allPaths.length === 0 && options.service && allServices.has(options.service)) {
+      logger.info('[ES Adapter] No paths found from root services, trying from specified service', { 
+        service: options.service 
+      });
+      
+      findAllPaths(options.service);
+    }
+    
+    // Sort paths based on the specified metric
+    allPaths.sort((a, b) => {
+      if (sortBy === 'calls') return b.calls - a.calls;
+      if (sortBy === 'errors') return b.errors - a.errors;
+      return b.errorRate - a.errorRate;
+    });
+    
+    // Limit the number of paths
+    const limitedPaths = allPaths.slice(0, maxPaths);
+    
+    // Create a service map for LLM understanding
+    // First, collect all unique services
+    const uniqueServices = new Set<string>();
+    limitedPaths.forEach(pathData => {
+      pathData.path.forEach(service => uniqueServices.add(service));
+    });
+    
+    // Create a map of service relationships
+    const serviceRelationships = new Map<string, Array<{
+      target: string,
+      calls: number,
+      errors: number,
+      errorRate: number
+    }>>();
+    
+    // Initialize the map for all services
+    uniqueServices.forEach(service => {
+      serviceRelationships.set(service, []);
+    });
+    
+    // Populate the relationships
+    limitedPaths.forEach(pathData => {
+      pathData.stageMetrics.forEach(stage => {
+        const source = stage.source;
+        const relationships = serviceRelationships.get(source) || [];
+        
+        // Check if this relationship already exists
+        const existingRelationship = relationships.find(rel => rel.target === stage.target);
+        if (existingRelationship) {
+          // Update with higher call count if found
+          if (stage.calls > existingRelationship.calls) {
+            existingRelationship.calls = stage.calls;
+            existingRelationship.errors = stage.errors;
+            existingRelationship.errorRate = stage.errorRate;
+          }
+        } else {
+          // Add new relationship
+          relationships.push({
+            target: stage.target,
+            calls: stage.calls,
+            errors: stage.errors,
+            errorRate: stage.errorRate
+          });
+        }
+      });
+    });
+    
+    // Convert the map to an array for output
+    const serviceMap = Array.from(serviceRelationships.entries()).map(([service, relationships]) => ({
+      service,
+      outboundCalls: relationships.map(rel => ({
+        target: rel.target,
+        calls: rel.calls,
+        errors: rel.errors,
+        errorRate: rel.errorRate,
+        errorRatePercentage: Math.round(rel.errorRate * 10000) / 100
+      }))
+    }));
+    
+    // Also keep the original paths for reference
+    const formattedPaths = limitedPaths.map(pathData => ({
+      path: pathData.path.join(' → '),
+      services: pathData.path,
+      length: pathData.path.length,
+      metrics: {
+        calls: pathData.calls,  // Bottleneck (minimum) calls along the path
+        errors: pathData.errors,
+        errorRate: pathData.errorRate,
+        errorRatePercentage: pathData.errorRatePercentage,
+        callsPerMinute: Math.round((pathData.calls / minutesInRange) * 100) / 100,
+        stages: pathData.stageMetrics.map(stage => ({
+          source: stage.source,
+          target: stage.target,
+          calls: stage.calls,
+          errors: stage.errors,
+          errorRate: stage.errorRate,
+          errorRatePercentage: Math.round(stage.errorRate * 10000) / 100
+        }))
+      }
+    }));
+    
+    logger.info('[ES Adapter] Service paths with error rates generated', { 
+      totalPaths: allPaths.length,
+      displayedPaths: formattedPaths.length
+    });
+    
+    // Return the formatted paths and service map
+    return {
+      serviceMap, // Include the service architecture map for LLM understanding
+      paths: formattedPaths,
+      summary: {
+        totalPaths: allPaths.length,
+        displayedPaths: formattedPaths.length,
+        timePeriod: {
+          start: startTime,
+          end: endTime,
+          durationMinutes: minutesInRange
+        }
+      },
+      metadata: {
+        message: 'Service architecture map and paths generated successfully',
+        filteredBy: options.service ? `service: ${options.service}` : 'none',
+        sortedBy: sortBy
+      }
+    };
   }
   
   public async queryTraces(query: any): Promise<any> {
@@ -458,8 +865,35 @@ export class ElasticsearchAdapter extends EventEmitter {
     return this.metricsAdapter.listMetricFields();
   }
   
-  public async aggregateOtelMetricsRange(startTime: string, endTime: string, metricName?: string, service?: string): Promise<string[]> {
-    return this.metricsAdapter.aggregateOtelMetricsRange(startTime, endTime, metricName, service);
+  public async aggregateOtelMetricsRange(
+    options: {
+      metricName: string;
+      service?: string;
+      startTime: string;
+      endTime: string;
+      interval?: string;
+      percentiles?: number[];
+      dimensions?: string[];
+      filters?: Record<string, any>;
+    }
+  ): Promise<{
+    metricName: string;
+    service?: string;
+    timeRange: { start: string; end: string };
+    interval: string;
+    buckets: Array<{
+      timestamp: string;
+      value: number;
+      count: number;
+      min?: number;
+      max?: number;
+      avg?: number;
+      sum?: number;
+      percentiles?: Record<string, number>;
+      dimensions?: Record<string, any>;
+    }>;
+  }> {
+    return this.metricsAdapter.aggregateOtelMetricsRange(options);
   }
   
   public async queryMetrics(query: any): Promise<any> {
@@ -471,20 +905,43 @@ export class ElasticsearchAdapter extends EventEmitter {
     return this.logsAdapter.listLogFields(includeSourceDocument);
   }
 
-  public async searchOtelLogs(pattern: string, serviceOrServices?: string | string[], logLevel?: string, startTime?: string, endTime?: string): Promise<{
-    timestamp: string;
-    service: string;
-    level: string;
-    message: string;
-    trace_id?: string;
-    span_id?: string;
-    attributes?: Record<string, any>;
-  }[]> {
-    return this.logsAdapter.searchOtelLogs(pattern, serviceOrServices, logLevel, startTime, endTime);
+  public async searchOtelLogs(
+    options: {
+      query?: string;
+      service?: string;
+      level?: string;
+      startTime?: string;
+      endTime?: string;
+      limit?: number;
+      offset?: number;
+      sortDirection?: 'asc' | 'desc';
+      traceId?: string;
+      spanId?: string;
+    }
+  ): Promise<any[]> {
+    return this.logsAdapter.searchOtelLogs(options);
   }
   
-  public async topErrors(startTime: string, endTime: string, N?: number, serviceOrServices?: string | string[], searchPattern?: string, query?: string): Promise<{ error: string, count: number, level?: string, service?: string, timestamp?: string, trace_id?: string, span_id?: string }[]> {
-    return this.logsAdapter.topErrors(startTime, endTime, N, serviceOrServices, searchPattern, query);
+  public async topErrors(
+    options: {
+      startTime: string;
+      endTime: string;
+      limit?: number;
+      service?: string;
+      includeExamples?: boolean;
+    }
+  ): Promise<Array<{
+    error: string;
+    count: number;
+    service: string;
+    examples?: Array<{
+      timestamp: string;
+      message: string;
+      trace_id?: string;
+      service: string;
+    }>;
+  }>> {
+    return this.logsAdapter.topErrors(options);
   }
   
   public async queryLogs(query: any): Promise<any> {
@@ -547,6 +1004,6 @@ export class ElasticsearchAdapter extends EventEmitter {
 // Re-export types and classes
 export { ElasticsearchAdapterOptions } from './core/core.js';
 export { ElasticsearchCore } from './core/core.js';
-export { TracesAdapter } from './traces/traces.js';
+export { TracesAdapter } from './traces/index.js';
 export { MetricsAdapter } from './metrics/metrics.js';
 export { LogsAdapter } from './logs/logs.js';

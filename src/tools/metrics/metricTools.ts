@@ -5,7 +5,7 @@ import type { McpServer } from '@modelcontextprotocol/sdk/server/mcp.js';
 import { ElasticsearchAdapter } from '../../adapters/elasticsearch/index.js';
 import { MetricFieldsTool } from './metricFields.js';
 import { registerMcpTool } from '../../utils/registerTool.js';
-import { ElasticGuards } from '../../utils/elasticGuards.js';
+import { ElasticGuards } from '../../utils/guards/index.js';
 
 /**
  * Register metrics-related tools with the MCP server
@@ -187,21 +187,23 @@ export function registerMetricTools(server: McpServer, esAdapter: ElasticsearchA
       sort: z.any().optional().describe('Sort order for results'),
       aggs: z.record(z.unknown()).optional().describe('Aggregation definitions'),
       _source: z.union([z.array(z.string()), z.boolean()]).optional().default(true).describe('Fields to include in results'),
-      search: z.string().optional().describe('Simple text search across fields'),
+      search: z.string().optional().describe('Logical query string supporting Elasticsearch query syntax (AND, OR, NOT operators, field:value syntax, wildcards, ranges). NOTE: If provided, this overwrites any passed query object with a query_string query optimized for metrics data. Examples: "resource.attributes.service.name:frontend AND metrics.*.value>100", "@timestamp:[now-1h TO now] AND name:*latency*", "service.name:(cart OR checkout) AND NOT attributes.unit:bytes".'),
       agg: z.record(z.unknown()).optional().describe('Simplified aggregation definition'),
       runtime_mappings: z.record(z.unknown()).optional().describe('Dynamic field definitions'),
-      script_fields: z.record(z.unknown()).optional().describe('Computed fields using scripts')
+      script_fields: z.record(z.unknown()).optional().describe('Computed fields using scripts'),
+      track_total_hits: z.union([z.boolean(), z.number()]).optional().describe('Controls how the total number of hits is tracked. Set to true for accurate counts, false for performance, or a number for a maximum count threshold.'),
+      timeout: z.string().optional().describe('Timeout for the search request (e.g., "30s"). Prevents long-running queries.'),
+      highlight: z.record(z.unknown()).optional().describe('Highlight configuration for search terms in results. Example: {"fields": {"name": {}}, "pre_tags": ["<em>"], "post_tags": ["</em>"]}.'),
+      collapse: z.record(z.unknown()).optional().describe('Field collapsing configuration to remove duplicate results. Example: {"field": "resource.attributes.service.name"}.'),
+      search_after: z.array(z.unknown()).optional().describe('Efficient pagination through large result sets using values from a previous search.')
     }).strict().describe('Query OTEL metrics in Elasticsearch. Use the same query format as Elasticsearch. Run searchMetricsFields to get a list of available fields and their schemas.') },
     async (args: { query?: any }) => {
       try {
         logger.info('[MCP TOOL] queryMetrics called', { args });
         
-        // Construct the Elasticsearch query
-        const query = args.query || {};
-        const indexPattern = '.ds-metrics-*';
-        
-        // Execute the query
-        const response = await esAdapter.callEsRequest('POST', `/${indexPattern}/_search`, query);
+        // Use the queryMetrics method from the metrics adapter
+        // This ensures proper handling of search parameter and other advanced features
+        const response = await esAdapter.queryMetrics(args.query || {});
         
         const output: MCPToolOutput = { content: [{ type: 'text', text: JSON.stringify(response, null, 2) }] };
         logger.info('[MCP TOOL] queryMetrics result', { hits: response.hits?.total?.value || 0 });
