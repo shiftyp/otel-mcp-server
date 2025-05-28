@@ -16,11 +16,12 @@ export function registerLogAnomaliesDetectTool(server: McpServer, esAdapter: Ela
       endTime: z.string().describe('End time (ISO8601, required)'),
       service: z.string().optional().describe('Service name (optional)'),
       level: z.string().optional().describe('Log level/severity (optional)'),
+      queryString: z.string().optional().describe('Additional Elasticsearch query string to filter results'),
       maxResults: z.number().default(20).describe('Maximum number of anomalies to return'),
       minCount: z.number().default(2).describe('Minimum number of occurrences for rare messages (default: 2)'),
     },
-    async (params: { startTime: string, endTime: string, service?: string, level?: string, maxResults?: number, minCount?: number }) => {
-      const { startTime, endTime, service, level, maxResults, minCount = 2 } = params;
+    async (params: { startTime: string, endTime: string, service?: string, level?: string, queryString?: string, maxResults?: number, minCount?: number }) => {
+      const { startTime, endTime, service, level, queryString, maxResults, minCount = 2 } = params;
       // Build the base bool filter
       const must: any[] = [];
       if (startTime || endTime) {
@@ -51,6 +52,15 @@ export function registerLogAnomaliesDetectTool(server: McpServer, esAdapter: Ela
               { term: { 'Severity': level } }
             ],
             minimum_should_match: 1
+          }
+        });
+      }
+      
+      // Add query string filter if provided
+      if (queryString) {
+        must.push({
+          query_string: {
+            query: queryString
           }
         });
       }

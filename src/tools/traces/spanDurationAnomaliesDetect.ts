@@ -17,14 +17,15 @@ export function registerSpanDurationAnomaliesDetectTool(server: McpServer, esAda
       endTime: z.string().describe('End time (ISO8601, required)'),
       service: z.string().optional().describe('Service name (optional)'),
       operation: z.string().optional().describe('Operation/span name (optional)'),
+      queryString: z.string().optional().describe('Additional Elasticsearch query string to filter results'),
       thresholdType: z.enum(['p99', 'stddev']).default('p99').describe('Threshold type for anomaly detection'),
       maxResults: z.number().default(20).describe('Maximum number of anomalies to return'),
     },
-    async (params: { startTime: string, endTime: string, service?: string, operation?: string, thresholdType?: string, maxResults?: number }) => {
-      const { startTime, endTime, service, operation, thresholdType = 'p99', maxResults = 20 } = params;
+    async (params: { startTime: string, endTime: string, service?: string, operation?: string, queryString?: string, thresholdType?: string, maxResults?: number }) => {
+      const { startTime, endTime, service, operation, queryString, thresholdType = 'p99', maxResults = 20 } = params;
       
       try {
-        logger.info('[MCP TOOL] spanDurationAnomaliesDetect called', { startTime, endTime, service, operation, thresholdType, maxResults });
+        logger.info('[MCP TOOL] spanDurationAnomaliesDetect called', { startTime, endTime, service, operation, queryString, thresholdType, maxResults });
         
         // Build the base bool filter
         const must: any[] = [];
@@ -61,6 +62,15 @@ export function registerSpanDurationAnomaliesDetectTool(server: McpServer, esAda
                 { term: { 'Name': operation } }
               ],
               minimum_should_match: 1
+            }
+          });
+        }
+        
+        // Add query string filter if provided
+        if (queryString) {
+          must.push({
+            query_string: {
+              query: queryString
             }
           });
         }
