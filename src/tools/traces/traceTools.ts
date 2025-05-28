@@ -5,13 +5,19 @@ import type { McpServer } from '@modelcontextprotocol/sdk/server/mcp.js';
 import { ElasticsearchAdapter } from '../../adapters/elasticsearch/index.js';
 import { registerMcpTool } from '../../utils/registerTool.js';
 import { TraceFieldsTool } from './traceFields.js';
+import { registerSystemHealthSummaryTool } from './systemHealthSummary.js';
 import { ElasticGuards } from '../../utils/guards/index.js';
+import { registerSpanDurationAnomaliesDetectTool } from './spanDurationAnomaliesDetect.js';
 
 /**
  * Register trace-related tools with the MCP server
  */
 export function registerTraceTools(server: McpServer, esAdapter: ElasticsearchAdapter) {
   const traceFieldsTool = new TraceFieldsTool(esAdapter);
+
+  registerSpanDurationAnomaliesDetectTool(server, esAdapter);
+  // Register system health summary tool
+  registerSystemHealthSummaryTool(server, esAdapter);
 
   // Direct trace query tool
   registerMcpTool(
