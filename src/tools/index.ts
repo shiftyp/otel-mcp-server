@@ -7,6 +7,7 @@ import { registerLogTools } from './logs/logTools.js';
 import { registerCommonTools } from './common/commonTools.js';
 import { ElasticGuards, ElasticsearchDataError } from '../utils/guards/index.js';
 import { logger } from '../utils/logger.js';
+import { registerSystemHealthSummaryTool } from './systemHealthSummary.js';
 
 /**
  * Register all MCP tools with the server
@@ -19,6 +20,9 @@ export async function registerAllTools(server: McpServer, esAdapter: Elasticsear
   
   // Register common tools that work across telemetry types
   registerCommonTools(server, esAdapter);
+
+  // Register system health summary tool
+  registerSystemHealthSummaryTool(server, esAdapter);
   
   // Check and register trace tools if trace data is available
   try {
