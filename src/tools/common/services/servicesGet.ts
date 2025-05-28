@@ -118,7 +118,8 @@ export function registerServicesGetTool(server: McpServer, esAdapter: Elasticsea
               .replace(/\?/g, '.');
             const regex = new RegExp(`^${regexPattern}$`, 'i');
             
-            filteredServices = filteredServices.filter(([_, versions]) => {
+            filteredServices = filteredServices.filter((entry) => {
+              const [_, versions] = entry;
               return Array.from(versions).some(version => regex.test(version));
             });
             
@@ -129,7 +130,8 @@ export function registerServicesGetTool(server: McpServer, esAdapter: Elasticsea
             });
           } else {
             // Use exact matching for non-wildcard version searches
-            filteredServices = filteredServices.filter(([_, versions]) => {
+            filteredServices = filteredServices.filter((entry) => {
+              const [_, versions] = entry;
               return versions.has(args.version!);
             });
             
@@ -141,16 +143,19 @@ export function registerServicesGetTool(server: McpServer, esAdapter: Elasticsea
         }
         
         // Convert filtered services to array of objects for response
-        const servicesList = filteredServices.map(([name, versions]) => ({
-          name,
-          versions: Array.from(versions)
-        }));
+        const servicesList = filteredServices.map((entry) => {
+          const [name, versions] = entry;
+          return {
+            name,
+            versions: Array.from(versions)
+          };
+        });
         
         // Sort services by name
         const sortedServices = servicesList.sort((a, b) => a.name.localeCompare(b.name));
         
         // Add metadata about which telemetry types were used and service field paths
-        const result: any = {
+        const result = {
           services: sortedServices,
           telemetryUsed: availableTelemetry,
           serviceFields: {
@@ -160,135 +165,24 @@ export function registerServicesGetTool(server: McpServer, esAdapter: Elasticsea
           }
         };
         
-        // Note: Graph generation has been removed as it duplicates the serviceArchitectureMap tool
-        // For service dependency information, use the serviceArchitectureMap tool instead
-                    incomingErrors: 0,
-                    outgoingErrors: 0
-                  });
-                }
-                const targetStats = serviceCallCounts.get(edge.target)!;
-                targetStats.calls += edge.count;
-                targetStats.incomingCalls += edge.count;
-                targetStats.incomingErrors += edge.errorCount || 0;
-                // We don't add errors to total target errors as they're already counted in the source
-              });
-              
-              // Calculate service-specific statistics
-              const serviceStats = Array.from(serviceCallCounts.entries()).map(([name, stats]) => {
-                const totalCalls = stats.calls;
-                const errorRate = totalCalls > 0 ? (stats.errors / totalCalls) : 0;
-                return {
-                  name,
-                  version: serviceVersionMap.get(name)?.[0] || 'unknown',
-                  totalCalls,
-                  incomingCalls: stats.incomingCalls,
-                  outgoingCalls: stats.outgoingCalls,
-                  errors: stats.errors,
-                  incomingErrors: stats.incomingErrors,
-                  outgoingErrors: stats.outgoingErrors,
-                  errorRate,
-                  errorRatePercentage: Math.round(errorRate * 10000) / 100,
-                  callsPerMinute: Math.round((totalCalls / timeRangeMs) * 60000 * 100) / 100
-                };
-              }).sort((a, b) => b.totalCalls - a.totalCalls); // Sort by total calls descending
-              
-              // Find the most active relationships
-              const topRelationships = [...edges]
-                .sort((a, b) => b.count - a.count)
-                .slice(0, 5)
-                .map(edge => ({
-                  source: edge.source,
-                  sourceVersion: serviceVersionMap.get(edge.source)?.[0] || 'unknown',
-                  target: edge.target,
-                  targetVersion: serviceVersionMap.get(edge.target)?.[0] || 'unknown',
-                  calls: edge.count,
-                  errors: edge.errorCount || 0,
-                  errorRate: edge.errorRate || 0,
-                  errorRatePercentage: Math.round((edge.errorRate || 0) * 10000) / 100,
-                  isExtended: edge.isExtended || false
-                }));
-              
-              // Get tree structure
-              let treeNodes: any[] = [];
-              
-              // Build the tree structure from the relationships data
-              const treeData = await esAdapter.buildServiceDependencyTree(relationships);
-              
-              if (treeData) {
-                // Convert the tree structure to a more JSON-friendly format
-                treeData.serviceTree.forEach((serviceData: any, serviceName: string) => {
-                  treeNodes.push({
-                    id: serviceName,
-                    name: serviceName,
-                    version: serviceVersionMap.get(serviceName)?.[0] || 'unknown',
-                    isRoot: treeData.rootServices.includes(serviceName),
-                    children: serviceData.children.map((child: any) => ({
-                      id: child.serviceName,
-                      name: child.serviceName,
-                      version: serviceVersionMap.get(child.serviceName)?.[0] || 'unknown',
-                      metrics: child.metrics
-                    })),
-                    parents: serviceData.parents.map((parent: any) => ({
-                      id: parent.serviceName,
-                      name: parent.serviceName,
-                      version: serviceVersionMap.get(parent.serviceName)?.[0] || 'unknown',
-                      metrics: parent.metrics
-                    })),
-                    metrics: serviceData.metrics
-                  });
-                });
-              }
-              
-              // Add the service dependency graph to the result
-              result.serviceGraph = {
-                nodes,
-                edges,
-                tree: treeNodes,
-                summary: {
-                  overall: {
-                    totalServices: nodes.length,
-                    totalRelationships: edges.length,
-                    directRelationships: edges.filter(e => !e.isExtended).length,
-                    extendedRelationships: edges.filter(e => e.isExtended).length,
-                    totalCalls,
-                    totalErrors,
-                    overallErrorRate,
-                    overallErrorRatePercentage: Math.round(overallErrorRate * 10000) / 100,
-                    callsPerMinute
-                  },
-                  services: serviceStats,
-                  topRelationships,
-                  timePeriod: {
-                    start: graphStartTime,
-                    end: graphEndTime,
-                    durationMinutes: Math.round(timeRangeMs / (1000 * 60) * 100) / 100,
-                    durationHours: Math.round(timeRangeMs / (1000 * 60 * 60) * 100) / 100
-                  }
-                }
-              };
-            }
-          } catch (error) {
-            logger.error('[MCP TOOL] Error generating service dependency graph', { 
-              error: error instanceof Error ? error.message : String(error),
-              stack: error instanceof Error ? error.stack : undefined
-            });
-            
-            // Add error information to the result
-            result.serviceGraph = {
-              error: {
-                message: error instanceof Error ? error.message : String(error),
-                type: error instanceof Error ? error.constructor.name : 'Unknown',
-                stack: error instanceof Error ? error.stack : undefined
-              }
-            };
-          }
-        }
-        
         return {
-          content: [{ type: 'text', text: JSON.stringify(result, null, 2) }]
+          content: [
+            { type: 'text', text: JSON.stringify(result) }
+          ]
         };
       } catch (error) {
-        return ElasticGuards.formatErrorResponse(error);
+        logger.error('[MCP TOOL] servicesGet failed', { 
+          error: error instanceof Error ? error.message : String(error),
+          stack: error instanceof Error ? error.stack : undefined,
+          args
+        });
+        
+        return {
+          content: [
+            { type: 'text', text: `Error retrieving services: ${error instanceof Error ? error.message : String(error)}` }
+          ],
+          isError: true
+        };
       }
     }
   );

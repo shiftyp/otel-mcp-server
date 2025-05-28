@@ -6,12 +6,15 @@ import { ElasticsearchAdapter } from '../../adapters/elasticsearch/index.js';
 import { MetricFieldsTool } from './metricFields.js';
 import { registerMcpTool } from '../../utils/registerTool.js';
 import { ElasticGuards } from '../../utils/guards/index.js';
+import { registerMetricAnomaliesDetectTool } from './metricAnomaliesDetect.js';
 
 /**
  * Register metrics-related tools with the MCP server
  */
 export function registerMetricTools(server: McpServer, esAdapter: ElasticsearchAdapter) {
-  // Anomaly detection tools have been removed
+  // Register metric anomaly detection tool
+  registerMetricAnomaliesDetectTool(server, esAdapter);
+  
   const metricFieldsTool = new MetricFieldsTool(esAdapter);
 
   // Search for metrics fields
