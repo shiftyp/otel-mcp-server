@@ -151,6 +151,16 @@ This will return a list of all registered tools, which will reflect the availabl
     - Filtering by service(s)
     - Pagination and sample span inclusion
     - Parameters: `startTime`, `endTime`, `includeDetails`, `errorRateThreshold`, `latencyThresholdMs`, `sampleSpanCount`, `bottleneckCount`, `service`, `services`
+- `metricAnomaliesDetect`: Detect anomalies in metric values based on statistical thresholds. Supports:
+    - Multiple threshold types: percentile-based (p99), standard deviation-based, or fixed value
+    - Different metric types: gauge, counter, and histogram metrics
+    - Service and metric field filtering
+    - Parameters: `startTime`, `endTime`, `metricField`, `metricType`, `service`, `thresholdType`, `thresholdValue`, `windowSize`, `maxResults`
+- `logAnomaliesDetect`: Detect anomalies in log patterns based on frequency and rarity. Supports:
+    - Minimum occurrence threshold for rare message detection
+    - Service and log level filtering
+    - Additional query string filtering
+    - Parameters: `startTime`, `endTime`, `service`, `level`, `minCount`, `maxResults`, `queryString`
 - `traceFieldsGet`: Discover available trace fields with their types (supports service filtering)
 - `logFieldsGet`: Discover available log fields with their types and schemas (supports service filtering)
 - `metricsFieldsGet`: Discover available metric fields with their types (supports service filtering)
@@ -250,6 +260,32 @@ A collection of ready-to-use prompts for LLMs and users, designed for the OTEL M
     }
   })
   ```
+- **Detect anomalies in CPU utilization metrics:**
+  ```javascript
+  mcp0_metricAnomaliesDetect({
+    "startTime": "2025-05-27T00:00:00Z",
+    "endTime": "2025-05-28T00:00:00Z",
+    "metricField": "metrics.system.cpu.utilization.value",
+    "metricType": "gauge",
+    "service": "frontend",
+    "thresholdType": "stddev",
+    "windowSize": 10,
+    "maxResults": 20
+  })
+  ```
+- **Detect anomalies in request counter metrics with a fixed threshold:**
+  ```javascript
+  mcp0_metricAnomaliesDetect({
+    "startTime": "2025-05-27T00:00:00Z",
+    "endTime": "2025-05-28T00:00:00Z",
+    "metricField": "metrics.http.server.request.count",
+    "metricType": "counter",
+    "service": "checkout",
+    "thresholdType": "fixed",
+    "thresholdValue": 1000,
+    "maxResults": 10
+  })
+  ```
 
 ### Log Queries
 - **Find all error logs for the cart service:**
@@ -268,6 +304,27 @@ A collection of ready-to-use prompts for LLMs and users, designed for the OTEL M
       "search": "authentication failure",
       "size": 50
     }
+  })
+  ```
+- **Detect anomalies in log patterns:**
+  ```javascript
+  mcp0_logAnomaliesDetect({
+    "startTime": "2025-05-27T00:00:00Z",
+    "endTime": "2025-05-28T00:00:00Z",
+    "service": "payment",
+    "level": "ERROR",
+    "minCount": 2,
+    "maxResults": 20
+  })
+  ```
+- **Find rare log messages across all services:**
+  ```javascript
+  mcp0_logAnomaliesDetect({
+    "startTime": "2025-05-27T00:00:00Z",
+    "endTime": "2025-05-28T00:00:00Z",
+    "queryString": "timeout OR connection refused",
+    "minCount": 1,
+    "maxResults": 50
   })
   ```
 
@@ -867,12 +924,19 @@ This makes it easier to debug issues and provide meaningful feedback to users.
 ### Kubernetes (Helm or kubectl)
 1. **Deploy the OTEL Demo:**
    - Follow the [OpenTelemetry Demo](https://github.com/open-telemetry/opentelemetry-demo) instructions for Kubernetes.
-2. **Deploy the Nginx Proxy:**
-   - Apply the provided `demo/elasticsearch-nginx-proxy.yaml`:
-     ```bash
-     kubectl apply -f demo/elasticsearch-nginx-proxy.yaml
-     ```
-   - Confirm the service is running (default port 80).
+
+2. **Deploy Elasticsearch** using the provided manifests:
+   ```bash
+   # Create namespace for Elasticsearch
+   kubectl create namespace elastic
+   
+   # Apply the Elasticsearch manifests
+   kubectl apply -f demo/elasticsearch-manifests/elasticsearch-service.yaml
+   kubectl apply -f demo/elasticsearch-manifests/elasticsearch-statefulset.yaml
+   kubectl apply -f demo/elasticsearch-manifests/elasticsearch-templates-configmap.yaml
+   kubectl apply -f demo/elasticsearch-manifests/elasticsearch-setup-job.yaml
+   ```
+
 3. **Run OTEL MCP Server:**
    - Start the server as a stdio process from your shell, or as a subprocess of your MCP client/orchestrator (e.g., Windsurf):
      ```bash
@@ -880,23 +944,25 @@ This makes it easier to debug issues and provide meaningful feedback to users.
      # or
      node dist/server.js
      ```
-   - Set `ELASTICSEARCH_URL` to the Nginx proxy service (e.g., `http://elasticsearch-nginx-proxy:80`).
+   - Set `ELASTICSEARCH_URL` to the Elasticsearch service (e.g., `http://elasticsearch.elastic:9200`) or use port-forwarding:
+     ```bash
+     kubectl port-forward -n elastic svc/elasticsearch 9200:9200 &
+     ELASTICSEARCH_URL=http://localhost:9200 npm start
+     ```
    - If running in a container, ensure stdio is connected to your orchestrator.
 
 ### Docker Compose
 1. **Run the OTEL Demo:**
    - Use the official Docker Compose setup from the [OpenTelemetry Demo](https://github.com/open-telemetry/opentelemetry-demo).
-2. **Add the Nginx Proxy:**
-   - Add a service to your `docker-compose.yaml` referencing the `demo/elasticsearch-nginx-proxy.conf` as a config/volume.
-   - Link the proxy to the Elasticsearch container and expose it on a desired port (e.g., 8082).
+2. **Configure Elasticsearch:**
+   - The demo includes Elasticsearch by default. Make sure it's properly configured with the OpenTelemetry templates.
+   - You can use the provided `demo/elasticsearch-templates` directory to apply the necessary templates.
 3. **Run OTEL MCP Server:**
    - Start the server as a stdio process from your shell, or as a subprocess of your MCP client/orchestrator:
      ```bash
      npm start
-     # or
-     node dist/server.js
      ```
-   - Set `ELASTICSEARCH_URL` to the Nginx proxy (e.g., `http://nginx-proxy:8082`).
+   - Set `ELASTICSEARCH_URL` to the Elasticsearch service (e.g., `http://localhost:9200`).
    - If running in a container, ensure stdio is connected to your orchestrator.
 
 **See the `demo/` directory for ready-to-use config files for both Kubernetes and Docker Compose.**
