@@ -133,49 +133,20 @@ This will return a list of all registered tools, which will reflect the availabl
 
 ### Direct Query Tools
 
-- `tracesQuery`: Execute custom Elasticsearch queries against trace data
-- `logsQuery`: Execute custom Elasticsearch queries against log data
-- `metricsQuery`: Execute custom Elasticsearch queries against metric data
-
-### Field Discovery Tools
-
+- `tracesQuery`: Query trace data using Elasticsearch query syntax
+- `metricsQuery`: Query metric data using Elasticsearch query syntax
+- `logsQuery`: Query log data using Elasticsearch query syntax
+- `servicesGet`: List all detected services (based on trace, metric, or log data)
+- `serviceDependencyInfo`: Analyze service dependency relationships and traffic metrics for all spans in a time window (no sampling)
+- `serviceArchitectureMap`: Generate a tree or graph of service relationships with error rates and traffic statistics. Supports:
+    - Tree structure output (preferred)
+    - Relationship-specific metrics (calls, errors, error rates)
+    - Format options: `full`, `summary`, `compact`
+    - Pagination: `page`, `pageSize`
+    - Filtering: `maxDepth`, `minCallCount`, `includeMetrics`
 - `traceFieldsGet`: Discover available trace fields with their types (supports service filtering)
 - `logFieldsGet`: Discover available log fields with their types and schemas (supports service filtering)
 - `metricsFieldsGet`: Discover available metric fields with their types (supports service filtering)
-
-### Service Discovery
-
-- `servicesGet`: List all available services and their versions
-  - Supports wildcard searches for service names (e.g., `front*`, `*end*`)
-  - Supports wildcard searches for service versions (e.g., `v*`, `2.0.*`)
-  - Supports time range filtering with `startTime` and `endTime` parameters
-  - Collates and deduplicates services from traces, metrics, and logs
-  - Automatically adapts to available telemetry types (traces, metrics, logs)
-  - Returns metadata about which telemetry types were used in the response
-### Common Query Parameters
-
-All query tools support the following parameters:
-
-- `query`: Elasticsearch query object
-- `size`: Maximum number of results to return
-- `from`: Starting offset for pagination
-- `sort`: Sort order for results
-- `aggs`: Aggregation definitions
-- `_source`: Fields to include in results (default: true)
-- `search`: Simple text search across fields
-- `agg`: Simplified aggregation definition
-- `runtime_mappings`: Dynamic field definitions
-- `script_fields`: Computed fields using scripts
-
-## Example Prompts for LLMs
-
-This MCP Server has been tested extensively with the [Windsurf](https://windsurf.com/editor) editor and the OpenTelemetry Demo application. It was asked to generate an entire incident report based on the demo applications test features, along with issues injected by Chaos Mesh. This is the [process](https://www.dropbox.com/scl/fi/o960wzw1p1zrnea8wqbhd/Recording-2025-05-26-214156.mp4?rlkey=c1sr4p31d54i48zmo6m4sav2j&st=cq1zxuez&dl=0) and [end result](https://gist.github.com/shiftyp/ebb1cc49196ddffd04d8c9709eb01c54). Other more focused examples are provided below.
-
-### Exploring Data Structure
-
-- **Trace Fields**: "What fields are available in the trace data? Use the `traceFieldsGet` tool to find out."
-- **Error Log Fields**: "What fields should I look at for error analysis? Use `logFieldsGet` to find fields related to errors."
-- **Service Metrics**: "What metrics are available for the 'frontend' service? Use `metricsFieldsGet` to find relevant fields."
 
 ### Service Discovery
 
@@ -194,64 +165,149 @@ This MCP Server has been tested extensively with the [Windsurf](https://windsurf
 - **Error Timeline**: "Find logs with error severity during the incident timeframe (May 23, 10:00-11:00 AM)."
 - **Authentication Issues**: "Find authentication failures or timeout errors during the incident using `logsQuery`."
 
-## Windsurf-Specific Prompts with Code Context
-
-When using this MCP server with [Windsurf](https://windsurf.com/editor), you can leverage both telemetry data and code context for more powerful analysis:
-
-### Exploring Code and Data Together
-
-- **Error Handling Fields**: "Find trace fields related to error handling in our API controllers and show where they're used in our code."
-- **Database Metrics**: "How do our database query metrics correlate with our ORM implementation? Analyze our access patterns."
-
-### Performance Analysis
-
-- **Slow Traces**: "Find slow traces in our payment service and analyze the code to identify performance bottlenecks."
-- **Resource Usage**: "Query CPU/memory metrics during peak loads and correlate with our resource allocation code."
-
-### Code-Aware Troubleshooting
-
-- **Auth Errors**: "Find recent authentication errors and analyze our auth middleware and token validation logic."
-- **API Failures**: "This endpoint returns 500 errors. Find recent traces and identify potential causes in the code."
-- **Latency Issues**: "The payment service has high latency. Find metrics and analyze our code for inefficiencies."
-
-### Root Cause Analysis
-
-- **Incident Investigation**: "Analyze telemetry from yesterday's incident (2:00-3:00 PM) and identify contributing code issues."
-- **Trace Analysis**: "This trace ID shows a failed checkout. Retrieve it and examine our checkout flow code for issues."
-
-### Performance Optimization
-
-- **Slow Database Queries**: "Find the slowest database operations and suggest optimizations (indexes, N+1 queries, joins)."
-- **API Response Times**: "Identify unusual patterns in API response times across services and review implementation code."
-- **Service Latency**: "Find slow spans in payment and checkout services from the last hour and suggest improvements."
-
-### Error Pattern Detection
-
-- **Log Patterns**: "Use aggregations to find unusual error patterns in the payment service over the last 2 hours."
-- **Cross-Service Errors**: "Analyze error patterns across microservices and suggest improvements to error handling."
-- **Authentication Failures**: "Find authentication failures during the incident timeframe using appropriate log fields."
-- **Incident Impact**: "Analyze which services were most affected during the incident and suggest investigation areas."
-
-### Cross-Service Analysis
-
-- **Checkout Flow Analysis**: "Analyze metrics, logs, and traces for our checkout flow to identify potential issues."
-- **Deployment Comparison**: "Compare payment service performance before and after deployment to identify changes."
-- **System-Wide Patterns**: "Find unusual patterns across our entire system during the incident window."
-
-### Advanced Elasticsearch Queries
-
-- **Correlated Logs**: "Find logs with correlation IDs matching error trace IDs from the last hour."
-- **Database Duration**: "Use script_fields to compute total database operation duration within each trace."
-- **Percentile Response Times**: "Create an aggregation showing 95th percentile response times by service and endpoint."
-
-### Custom Runtime Fields
-
-- **Error Code Extraction**: "Create a runtime field to extract and aggregate error codes from log messages."
-- **External Call Analysis**: "Calculate percentage of time spent in external service calls and find high-impact traces."
-
 ## 🔎 Example Queries
 
 Here are some example queries you can use with the OTEL MCP Server tools:
+
+---
+
+## 🤖 LLM Prompt Library
+
+A collection of ready-to-use prompts for LLMs and users, designed for the OTEL MCP Server and Windsurf. All prompts use real Elasticsearch data (no sampling or mock data) and support tree structure, filtering, and pagination where relevant.
+
+### Service Discovery
+- **List all services:**
+  ```javascript
+  mcp0_servicesGet({})
+  ```
+- **Find services matching a pattern:**
+  ```javascript
+  mcp0_servicesGet({ "search": "cart*" })
+  ```
+- **List services with a specific version:**
+  ```javascript
+  mcp0_servicesGet({ "version": "2.0.*" })
+  ```
+
+### Trace Queries
+- **Find all error traces in the last hour:**
+  ```javascript
+  mcp0_tracesQuery({
+    "query": {
+      "search": "@timestamp:[now-1h TO now] AND status.code:ERROR",
+      "size": 100
+    }
+  })
+  ```
+- **Find all traces for the checkout service:**
+  ```javascript
+  mcp0_tracesQuery({
+    "query": {
+      "search": "service.name:checkout",
+      "size": 100
+    }
+  })
+  ```
+
+### Metric Queries
+- **Find high CPU usage metrics:**
+  ```javascript
+  mcp0_metricsQuery({
+    "query": {
+      "search": "metric.name:system.cpu.usage AND metric.value:>0.8",
+      "size": 10
+    }
+  })
+  ```
+- **Get all latency metrics for payment service:**
+  ```javascript
+  mcp0_metricsQuery({
+    "query": {
+      "search": "service.name:payment AND name:*latency*",
+      "size": 100
+    }
+  })
+  ```
+
+### Log Queries
+- **Find all error logs for the cart service:**
+  ```javascript
+  mcp0_logsQuery({
+    "query": {
+      "search": "service.name:cart AND severity_text:ERROR",
+      "size": 100
+    }
+  })
+  ```
+- **Find logs with authentication failures:**
+  ```javascript
+  mcp0_logsQuery({
+    "query": {
+      "search": "authentication failure",
+      "size": 50
+    }
+  })
+  ```
+
+### Service Dependency & Architecture
+- **Show the service dependency tree for all services in the last 24 hours:**
+  ```javascript
+  mcp0_serviceArchitectureMap({
+    "startTime": "2025-05-27T00:00:00Z",
+    "endTime": "2025-05-28T00:00:00Z",
+    "format": "full"
+  })
+  ```
+- **Show only high-traffic relationships (minCallCount = 100):**
+  ```javascript
+  mcp0_serviceArchitectureMap({
+    "startTime": "2025-05-27T00:00:00Z",
+    "endTime": "2025-05-28T00:00:00Z",
+    "format": "full",
+    "minCallCount": 100
+  })
+  ```
+- **Paginate through the service dependency tree:**
+  ```javascript
+  mcp0_serviceArchitectureMap({
+    "startTime": "2025-05-27T00:00:00Z",
+    "endTime": "2025-05-28T00:00:00Z",
+    "format": "summary",
+    "page": 2,
+    "pageSize": 10
+  })
+  ```
+
+### Root Cause Analysis & Troubleshooting
+- **Incident investigation for a specific time window:**
+  ```javascript
+  mcp0_tracesQuery({
+    "query": {
+      "search": "@timestamp:[2025-05-27T14:00:00Z TO 2025-05-27T15:00:00Z] AND status.code:ERROR",
+      "size": 100
+    }
+  })
+  ```
+- **Find slow spans in payment and checkout services:**
+  ```javascript
+  mcp0_tracesQuery({
+    "query": {
+      "search": "service.name:(payment OR checkout) AND duration_ms:>1000",
+      "size": 100
+    }
+  })
+  ```
+- **Find authentication errors and correlate with logs:**
+  ```javascript
+  mcp0_logsQuery({
+    "query": {
+      "search": "authentication failure OR auth error",
+      "size": 100
+    }
+  })
+  ```
+
+---
 
 ### Service Discovery
 
@@ -260,25 +316,6 @@ Here are some example queries you can use with the OTEL MCP Server tools:
 mcp0_servicesGet({
   "search": "front*"
 })
-
-// Example response showing which telemetry types were used:
-// {
-//   "services": [
-//     {
-//       "name": "frontend",
-//       "versions": ["2.0.2"]
-//     },
-//     {
-//       "name": "frontend-proxy",
-//       "versions": ["2.0.2"]
-//     }
-//   ],
-//   "telemetryUsed": {
-//     "traces": true,
-//     "metrics": true,
-//     "logs": true
-//   }
-// }
 
 // Get all services with version 2.0.2
 mcp0_servicesGet({
