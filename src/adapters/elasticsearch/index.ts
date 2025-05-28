@@ -9,10 +9,10 @@ import { logger } from '../../utils/logger.js';
  * Main ElasticsearchAdapter that combines functionality from specialized adapters
  */
 export class ElasticsearchAdapter extends EventEmitter {
-  private tracesAdapter: TracesAdapter;
-  private metricsAdapter: MetricsAdapter;
-  private logsAdapter: LogsAdapter;
-  private coreAdapter: ElasticsearchCore;
+  public readonly tracesAdapter: TracesAdapter;
+  public readonly metricsAdapter: MetricsAdapter;
+  public readonly logsAdapter: LogsAdapter;
+  public readonly coreAdapter: ElasticsearchCore;
   
   constructor(options: ElasticsearchAdapterOptions) {
     super();

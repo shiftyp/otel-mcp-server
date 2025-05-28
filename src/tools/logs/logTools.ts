@@ -6,12 +6,16 @@ import { ElasticsearchAdapter } from '../../adapters/elasticsearch/index.js';
 import { registerMcpTool } from '../../utils/registerTool.js';
 import { LogFieldsTool } from './logFields.js';
 import { ElasticGuards } from '../../utils/guards/index.js';
-
+import { registerLogAnomaliesDetectTool } from './logAnomaliesDetect.js';
+  
 /**
  * Register log-related tools with the MCP server
  */
 export function registerLogTools(server: McpServer, esAdapter: ElasticsearchAdapter) {
   const logFieldsTool = new LogFieldsTool(esAdapter);
+
+
+  registerLogAnomaliesDetectTool(server, esAdapter)
 
   // Log fields schema with co-occurring fields
   registerMcpTool(

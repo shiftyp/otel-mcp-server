@@ -1,8 +1,9 @@
 import { McpServer } from '@modelcontextprotocol/sdk/server/mcp.js';
 import { z } from 'zod';
-import { ElasticsearchAdapter } from '../adapters/elasticsearch/index.js';
-import { logger } from '../utils/logger.js';
-import { ElasticGuards } from '../utils/guards/index.js';
+import { ElasticsearchAdapter } from '../../adapters/elasticsearch/index.js';
+import { logger } from '../../utils/logger.js';
+import { ElasticGuards } from '../../utils/guards/index.js';
+import { registerMcpTool } from '../../utils/registerTool.js';
 
 /**
  * Registers the systemHealthSummary tool with the MCP server.
@@ -10,7 +11,8 @@ import { ElasticGuards } from '../utils/guards/index.js';
  * @param esAdapter Elasticsearch adapter instance
  */
 export function registerSystemHealthSummaryTool(server: McpServer, esAdapter: ElasticsearchAdapter) {
-  server.tool(
+  registerMcpTool(
+    server,
     'systemHealthSummary',
     {
       startTime: z.string().describe('Start time (ISO8601, required, e.g. 2023-01-01T00:00:00Z)'),
@@ -23,7 +25,7 @@ export function registerSystemHealthSummaryTool(server: McpServer, esAdapter: El
       service: z.string().optional().describe('Filter results to a single service name (exact match, optional)'),
       services: z.array(z.string()).optional().describe('Filter results to a list of service names (exact match, optional)'),
     },
-    async (params) => {
+    async (params: { startTime: string, endTime: string, includeDetails: boolean, errorRateThreshold: number, latencyThresholdMs: number, sampleSpanCount: number, bottleneckCount: number, service?: string, services?: string[] }) => {
       const { startTime, endTime, includeDetails, errorRateThreshold, latencyThresholdMs, sampleSpanCount, bottleneckCount, service, services } = params;
       try {
         // Build ES query for service health summary

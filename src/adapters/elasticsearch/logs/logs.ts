@@ -15,7 +15,7 @@ export class LogsAdapter extends ElasticsearchCore {
   private fieldsModule: LogFieldsModule;
   private searchModule: LogSearchModule;
   private errorsModule: LogErrorsModule;
-  private queryModule: LogQueryModule;
+  public readonly queryModule: LogQueryModule;
 
   constructor(options: any) {
     super(options);
