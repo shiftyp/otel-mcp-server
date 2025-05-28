@@ -144,6 +144,12 @@ This will return a list of all registered tools, which will reflect the availabl
     - Format options: `full`, `summary`, `compact`
     - Pagination: `page`, `pageSize`
     - Filtering: `maxDepth`, `minCallCount`, `includeMetrics`
+- `systemHealthSummary`: Summarize service health and bottlenecks across a time window. Supports:
+    - Error rate and latency thresholds for degraded service detection
+    - Bottleneck operation analysis per service
+    - Filtering by service(s)
+    - Pagination and sample span inclusion
+    - Parameters: `startTime`, `endTime`, `includeDetails`, `errorRateThreshold`, `latencyThresholdMs`, `sampleSpanCount`, `bottleneckCount`, `service`, `services`
 - `traceFieldsGet`: Discover available trace fields with their types (supports service filtering)
 - `logFieldsGet`: Discover available log fields with their types and schemas (supports service filtering)
 - `metricsFieldsGet`: Discover available metric fields with their types (supports service filtering)
@@ -251,32 +257,53 @@ A collection of ready-to-use prompts for LLMs and users, designed for the OTEL M
 
 ### Service Dependency & Architecture
 - **Show the service dependency tree for all services in the last 24 hours:**
-  ```javascript
-  mcp0_serviceArchitectureMap({
-    "startTime": "2025-05-27T00:00:00Z",
-    "endTime": "2025-05-28T00:00:00Z",
-    "format": "full"
-  })
-  ```
+```javascript
+mcp0_serviceArchitectureMap({
+  "startTime": "2025-05-27T00:00:00Z",
+  "endTime": "2025-05-28T00:00:00Z",
+  "format": "full"
+})
+```
 - **Show only high-traffic relationships (minCallCount = 100):**
-  ```javascript
-  mcp0_serviceArchitectureMap({
-    "startTime": "2025-05-27T00:00:00Z",
-    "endTime": "2025-05-28T00:00:00Z",
-    "format": "full",
-    "minCallCount": 100
-  })
-  ```
+```javascript
+mcp0_serviceArchitectureMap({
+  "startTime": "2025-05-27T00:00:00Z",
+  "endTime": "2025-05-28T00:00:00Z",
+  "format": "full",
+  "minCallCount": 100
+})
+```
 - **Paginate through the service dependency tree:**
-  ```javascript
-  mcp0_serviceArchitectureMap({
-    "startTime": "2025-05-27T00:00:00Z",
-    "endTime": "2025-05-28T00:00:00Z",
-    "format": "summary",
-    "page": 2,
-    "pageSize": 10
-  })
-  ```
+```javascript
+mcp0_serviceArchitectureMap({
+  "startTime": "2025-05-27T00:00:00Z",
+  "endTime": "2025-05-28T00:00:00Z",
+  "format": "summary",
+  "page": 2,
+  "pageSize": 10
+})
+```
+
+### System Health Summary
+- **Summarize health and bottlenecks for all services in a time window:**
+```javascript
+mcp0_systemHealthSummary({
+  "startTime": "2025-05-27T00:00:00Z",
+  "endTime": "2025-05-28T00:00:00Z"
+})
+```
+- **Show detailed bottleneck operations for a specific service with custom thresholds:**
+```javascript
+mcp0_systemHealthSummary({
+  "startTime": "2025-05-27T00:00:00Z",
+  "endTime": "2025-05-28T00:00:00Z",
+  "service": "checkout",
+  "includeDetails": true,
+  "errorRateThreshold": 0.05,
+  "latencyThresholdMs": 1000,
+  "bottleneckCount": 3
+})
+```
 
 ### Root Cause Analysis & Troubleshooting
 - **Incident investigation for a specific time window:**
