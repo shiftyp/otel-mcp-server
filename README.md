@@ -137,7 +137,8 @@ This will return a list of all registered tools, which will reflect the availabl
 - `metricsQuery`: Query metric data using Elasticsearch query syntax
 - `logsQuery`: Query log data using Elasticsearch query syntax
 - `servicesGet`: List all detected services (based on trace, metric, or log data)
-- `serviceDependencyInfo`: Analyze service dependency relationships and traffic metrics for all spans in a time window (no sampling)
+- `spanDurationAnomaliesDetect`: Detect spans with unusually high durations (latency outliers) based on statistical thresholds
+- `serviceDependencyInfo`: Analyze service dependency relationships and traffic metrics for all spans in a time window
 - `serviceArchitectureMap`: Generate a tree or graph of service relationships with error rates and traffic statistics. Supports:
     - Tree structure output (preferred)
     - Relationship-specific metrics (calls, errors, error rates)
@@ -164,6 +165,7 @@ This will return a list of all registered tools, which will reflect the availabl
 - **Error Traces**: "Find all error traces from the last 24 hours for the 'payment' service using `tracesQuery`."
 - **Recent Logs**: "Show me the most recent logs from the 'checkout' service using `logsQuery`."
 - **Resource Metrics**: "Get the CPU usage metrics for the 'api' service over the past hour using `metricsQuery`."
+- **Performance Anomalies**: "Detect spans with unusually high latency in the 'checkout' service using `spanDurationAnomaliesDetect`."
 
 ### Incident Investigation
 
@@ -179,7 +181,7 @@ Here are some example queries you can use with the OTEL MCP Server tools:
 
 ## 🤖 LLM Prompt Library
 
-A collection of ready-to-use prompts for LLMs and users, designed for the OTEL MCP Server and Windsurf. All prompts use real Elasticsearch data (no sampling or mock data) and support tree structure, filtering, and pagination where relevant.
+A collection of ready-to-use prompts for LLMs and users, designed for the OTEL MCP Server and Windsurf. All prompts support tree structure, filtering, and pagination where relevant.
 
 ### Service Discovery
 - **List all services:**
@@ -194,6 +196,10 @@ A collection of ready-to-use prompts for LLMs and users, designed for the OTEL M
   ```javascript
   mcp0_servicesGet({ "version": "2.0.*" })
   ```
+- **List services within a time range:**
+  ```javascript
+  mcp0_servicesGet({ "startTime": "2025-05-27T00:00:00Z", "endTime": "2025-05-28T00:00:00Z" })
+  ```
 
 ### Trace Queries
 - **Find all error traces in the last hour:**
@@ -203,6 +209,16 @@ A collection of ready-to-use prompts for LLMs and users, designed for the OTEL M
       "search": "@timestamp:[now-1h TO now] AND status.code:ERROR",
       "size": 100
     }
+  })
+  ```
+- **Detect spans with unusually high durations:**
+  ```javascript
+  mcp0_spanDurationAnomaliesDetect({
+    "startTime": "2025-05-27T00:00:00Z",
+    "endTime": "2025-05-28T00:00:00Z",
+    "service": "frontend",
+    "thresholdType": "p99",
+    "maxResults": 10
   })
   ```
 - **Find all traces for the checkout service:**
