@@ -1,6 +1,17 @@
 # OTEL MCP Server
 
-A minimal MCP (Model Context Protocol) server that provides a stdio-based interface to Elasticsearch for querying and analyzing OpenTelemetry (OTEL) observability data (traces, metrics, logs).
+## 🚀 Supercharge Your Observability with AI-Powered Insights
+
+OTEL MCP Server is an open-source bridge that connects AI systems directly to your OpenTelemetry data in Elasticsearch. While OpenTelemetry has solved the data collection problem with vendor-neutral instrumentation, traditional observability still requires humans to manually navigate dashboards and query interfaces.
+
+This server implements the Model Context Protocol (MCP) to enable AI assistants to query and analyze your traces, metrics, and logs in real-time, transforming how you interact with observability data:
+
+- **Investigate Incidents Autonomously**: AI can query traces during outages, find error patterns, and correlate issues across your entire application landscape
+- **Provide Context-Aware Assistance**: When reviewing code, AI can simultaneously analyze related production telemetry data
+- **Answer Complex Questions**: "Show me all errors from the authentication flow in the last 24 hours" becomes a simple natural language request
+- **Detect Anomalies On-Demand**: Instead of configuring static thresholds, ask the AI to identify unusual patterns in your data
+
+As developers, we know that a well-designed system reveals its own inner workings. By connecting OpenTelemetry data to AI, OTEL MCP Server amplifies this natural learning process, making your system's behavior more transparent and accessible.
 
 ## ⚙️ MCP Configuration
 
