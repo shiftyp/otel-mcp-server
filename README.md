@@ -156,6 +156,12 @@ This will return a list of all registered tools, which will reflect the availabl
     - Different metric types: gauge, counter, and histogram metrics
     - Service and metric field filtering
     - Parameters: `startTime`, `endTime`, `metricField`, `metricType`, `service`, `thresholdType`, `thresholdValue`, `windowSize`, `maxResults`
+- `timeSeriesAnalysis`: Analyze time series data with statistical methods and pattern detection. Supports:
+    - Multiple analysis types: basic statistics, trend analysis, seasonality detection, outlier detection
+    - Customizable time intervals for data bucketing
+    - Service and metric field filtering
+    - Additional query string filtering
+    - Parameters: `startTime`, `endTime`, `metricField`, `interval`, `service`, `queryString`, `analysisType`
 - `logAnomaliesDetect`: Detect anomalies in log patterns based on frequency and rarity. Supports:
     - Minimum occurrence threshold for rare message detection
     - Service and log level filtering
@@ -286,6 +292,39 @@ A collection of ready-to-use prompts for LLMs and users, designed for the OTEL M
     "maxResults": 10
   })
   ```
+- **Analyze CPU utilization trends over time:**
+  ```javascript
+  mcp0_timeSeriesAnalysis({
+    "startTime": "2025-05-27T00:00:00Z",
+    "endTime": "2025-05-28T00:00:00Z",
+    "metricField": "metrics.system.cpu.utilization",
+    "interval": "1h",
+    "service": "recommendation",
+    "analysisType": "trend"
+  })
+  ```
+- **Detect seasonal patterns in service metrics:**
+  ```javascript
+  mcp0_timeSeriesAnalysis({
+    "startTime": "2025-05-20T00:00:00Z",
+    "endTime": "2025-05-28T00:00:00Z",
+    "metricField": "metrics.quotes",
+    "interval": "4h",
+    "service": "quote",
+    "analysisType": "seasonality"
+  })
+  ```
+- **Comprehensive analysis of memory usage metrics:**
+  ```javascript
+  mcp0_timeSeriesAnalysis({
+    "startTime": "2025-05-27T00:00:00Z",
+    "endTime": "2025-05-28T00:00:00Z",
+    "metricField": "metrics.process.runtime.jvm.memory.heap.used",
+    "interval": "30m",
+    "service": "cart",
+    "analysisType": "full"
+  })
+  ```
 
 ### Log Queries
 - **Find all error logs for the cart service:**
@@ -404,6 +443,55 @@ mcp0_systemHealthSummary({
       "search": "authentication failure OR auth error",
       "size": 100
     }
+  })
+  ```
+
+### Time Series Analysis for Incident Investigation
+
+- **Analyze CPU spikes during an incident window:**
+  ```javascript
+  mcp0_timeSeriesAnalysis({
+    "startTime": "2025-05-27T14:00:00Z",
+    "endTime": "2025-05-27T16:00:00Z",
+    "metricField": "metrics.system.cpu.utilization",
+    "interval": "1m",
+    "service": "payment",
+    "analysisType": "outliers"
+  })
+  ```
+
+- **Detect changes in request patterns before an outage:**
+  ```javascript
+  mcp0_timeSeriesAnalysis({
+    "startTime": "2025-05-27T00:00:00Z",
+    "endTime": "2025-05-27T12:00:00Z",
+    "metricField": "metrics.http.server.request.count",
+    "interval": "5m",
+    "service": "frontend",
+    "analysisType": "trend"
+  })
+  ```
+
+- **Compare metrics before and during an incident:**
+  ```javascript
+  // Before incident
+  mcp0_timeSeriesAnalysis({
+    "startTime": "2025-05-26T12:00:00Z",
+    "endTime": "2025-05-27T00:00:00Z",
+    "metricField": "metrics.process.runtime.jvm.memory.heap.used",
+    "interval": "30m",
+    "service": "cart",
+    "analysisType": "basic"
+  })
+  
+  // During incident
+  mcp0_timeSeriesAnalysis({
+    "startTime": "2025-05-27T00:00:00Z",
+    "endTime": "2025-05-27T12:00:00Z",
+    "metricField": "metrics.process.runtime.jvm.memory.heap.used",
+    "interval": "30m",
+    "service": "cart",
+    "analysisType": "basic"
   })
   ```
 

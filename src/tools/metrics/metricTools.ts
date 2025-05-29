@@ -7,6 +7,7 @@ import { MetricFieldsTool } from './metricFields.js';
 import { registerMcpTool } from '../../utils/registerTool.js';
 import { ElasticGuards } from '../../utils/guards/index.js';
 import { registerMetricAnomaliesDetectTool } from './metricAnomaliesDetect.js';
+import { registerTimeSeriesAnalysisTool } from './timeSeriesAnalysis.js';
 
 /**
  * Register metrics-related tools with the MCP server
@@ -14,6 +15,9 @@ import { registerMetricAnomaliesDetectTool } from './metricAnomaliesDetect.js';
 export function registerMetricTools(server: McpServer, esAdapter: ElasticsearchAdapter) {
   // Register metric anomaly detection tool
   registerMetricAnomaliesDetectTool(server, esAdapter);
+  
+  // Register time series analysis tool
+  registerTimeSeriesAnalysisTool(server, esAdapter);
   
   const metricFieldsTool = new MetricFieldsTool(esAdapter);
 
