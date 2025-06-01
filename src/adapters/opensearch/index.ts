@@ -4,7 +4,11 @@ import { TracesAdapter } from './traces/index.js';
 import { MetricsAdapter } from './metrics/index.js';
 import { LogsAdapter } from './logs/index.js';
 import { logger } from '../../utils/logger.js';
-import { BaseSearchAdapter } from '../base/searchAdapter.js';
+import { BaseSearchAdapter, SearchEngineType } from '../base/searchAdapter.js';
+import { HistogramComparison } from './metrics/histogramComparison.js';
+import { SemanticLogSearch } from './logs/semanticLogSearch.js';
+import { DependencyEvolutionAnalysis } from './traces/dependencyEvolution.js';
+// Import TraceAttributeClustering dynamically to avoid circular dependencies
 
 /**
  * Main OpenSearchAdapter that combines functionality from specialized adapters
@@ -15,6 +19,7 @@ export class OpenSearchAdapter extends BaseSearchAdapter {
   public readonly tracesAdapter: TracesAdapter;
   public readonly metricsAdapter: MetricsAdapter;
   public readonly logsAdapter: LogsAdapter;
+  private readonly dependencyEvolutionAnalysis: DependencyEvolutionAnalysis;
   
   constructor(options: OpenSearchAdapterOptions) {
     super(options);
@@ -22,6 +27,7 @@ export class OpenSearchAdapter extends BaseSearchAdapter {
     this.tracesAdapter = new TracesAdapter(options);
     this.metricsAdapter = new MetricsAdapter(options);
     this.logsAdapter = new LogsAdapter(options);
+    this.dependencyEvolutionAnalysis = new DependencyEvolutionAnalysis(options);
   }
   
   // Core methods - delegate to core adapter
@@ -42,7 +48,7 @@ export class OpenSearchAdapter extends BaseSearchAdapter {
   }
   
   public getType(): string {
-    return this.coreAdapter.getType();
+    return SearchEngineType.OPENSEARCH;
   }
   
   public async getVersion(): Promise<string> {
@@ -51,6 +57,33 @@ export class OpenSearchAdapter extends BaseSearchAdapter {
   
   public supportsFeature(feature: string): boolean {
     return this.coreAdapter.supportsFeature(feature);
+  }
+  
+  /**
+   * Query logs with custom query
+   * @param query The query object
+   */
+  public async queryLogs(query: any): Promise<any> {
+    logger.info('OpenSearchAdapter.queryLogs', { query });
+    return this.logsAdapter.searchLogs(query);
+  }
+  
+  /**
+   * List available log fields
+   * @param includeSourceDoc Whether to include source document fields
+   */
+  public async listLogFields(includeSourceDoc: boolean = true): Promise<any[]> {
+    logger.info('OpenSearchAdapter.listLogFields', { includeSourceDoc });
+    return this.logsAdapter.getLogFields(includeSourceDoc ? undefined : '');
+  }
+  
+  /**
+   * Query traces with custom query
+   * @param query The query object
+   */
+  public async queryTraces(query: any): Promise<any> {
+    logger.info('OpenSearchAdapter.queryTraces', { query });
+    return this.tracesAdapter.searchTraces(query);
   }
   
   // Traces methods - delegate to traces adapter
@@ -194,6 +227,131 @@ export class OpenSearchAdapter extends BaseSearchAdapter {
     } = {}
   ): Promise<any> {
     return this.logsAdapter.timeSeriesAnalysis(startTime, endTime, options);
+  }
+  
+  /**
+   * Compare histogram patterns across multiple time ranges
+   * Phase 1 ML tool: Enhanced histogram comparison with statistical tests
+   */
+  public async compareHistogramPatterns(
+    histogramData1: any[],
+    histogramData2: any[],
+    options: {
+      compareMethod?: 'kl_divergence' | 'js_divergence' | 'wasserstein' | 'all';
+      detectModes?: boolean;
+      runStatTests?: boolean;
+      smoothing?: number;
+    } = {}
+  ): Promise<any> {
+    // Pass the metricsAdapter's core adapter to match the expected MetricsAdapterCore type
+    return HistogramComparison.compareHistogramPatterns(
+      (this.metricsAdapter as any).coreAdapter,
+      histogramData1,
+      histogramData2,
+      {
+        ...options,
+        engineType: this.getType()
+      }
+    );
+  }
+  
+  /**
+   * Perform semantic search on logs with enhanced context handling
+   * Phase 1 ML tool: Enhanced semantic log search with context handling
+   */
+  public async semanticLogSearch(
+    query: string,
+    options: {
+      startTime?: string;
+      endTime?: string;
+      service?: string;
+      level?: string;
+      queryString?: string;
+      k?: number;
+      minSimilarity?: number;
+      includeContext?: boolean;
+      contextWindowSize?: number;
+      samplingPercent?: number;
+      embeddingProviderConfig?: import('./ml/embeddingProvider.js').EmbeddingProviderConfig;
+    } = {}
+  ): Promise<any> {
+    // Create enhanced options with both the client and coreAdapter for proper embedding generation
+    const enhancedOptions = {
+      ...this.options,
+      client: this.coreAdapter, // Pass the core adapter which has the callRequest method
+      coreAdapter: this.coreAdapter // Also pass it as coreAdapter for direct access
+    };
+    
+    const semanticSearch = new SemanticLogSearch(enhancedOptions);
+    return semanticSearch.semanticLogSearch(query, {
+      ...options,
+      engineType: this.getType()
+    });
+  }
+  
+  /**
+   * Analyze the evolution of service dependencies over time
+   * Phase 1 ML tool: Enhanced dependency analysis with temporal tracking
+   */
+  public async analyzeDependencyEvolution(
+    startTime1: string,
+    endTime1: string,
+    startTime2: string,
+    endTime2: string,
+    options: {
+      service?: string;
+      queryString?: string;
+      minCallCount?: number;
+      significantChangeThreshold?: number;
+      errorRateChangeThreshold?: number;
+    } = {}
+  ): Promise<any> {
+    return this.dependencyEvolutionAnalysis.analyzeDependencyEvolution(
+      startTime1,
+      endTime1,
+      startTime2,
+      endTime2,
+      {
+        ...options,
+        engineType: this.getType()
+      }
+    );
+  }
+  
+  /**
+   * Cluster trace attributes to identify patterns
+   * Phase 1 ML tool: Enhanced trace attribute analysis with clustering
+   */
+  public async clusterTraceAttributes(
+    attributeKey: string,
+    startTime: string,
+    endTime: string,
+    options: {
+      service?: string;
+      queryString?: string;
+      clusterCount?: number;
+      minClusterSize?: number;
+      includeOutliers?: boolean;
+      // Sampling parameters for embedding generation
+      enableSampling?: boolean;
+      samplingPercent?: number;
+      maxSamples?: number;
+      embeddingBatchSize?: number;
+    } = {}
+  ): Promise<any> {
+    logger.info('[OpenSearchAdapter] Clustering trace attributes', {
+      attributeKey,
+      startTime,
+      endTime
+    });
+    
+    // Use the TracesAdapter's implementation which handles the dynamic import
+    return this.tracesAdapter.clusterTraceAttributes(
+      attributeKey,
+      startTime,
+      endTime,
+      options
+    );
   }
 }
 

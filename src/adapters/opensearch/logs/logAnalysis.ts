@@ -57,7 +57,7 @@ export class LogsAnalysisAdapter extends LogsAdapterCore {
         | stats ${metricField} by span(@timestamp, ${interval})
       `;
       
-      const pplResponse = await this.request('POST', pplEndpoint, { query: pplQuery });
+      const pplResponse = await this.callRequest('POST', pplEndpoint, { query: pplQuery });
       
       if (!pplResponse.datarows || pplResponse.datarows.length === 0) {
         return { timeSeriesData: [], message: 'No log data found for time series analysis' };
@@ -96,7 +96,7 @@ export class LogsAnalysisAdapter extends LogsAdapterCore {
           }
         };
         
-        const regressionResponse = await this.request('POST', `${mlEndpoint}/train_predict`, regressionRequest);
+        const regressionResponse = await this.callRequest('POST', `${mlEndpoint}/train_predict`, regressionRequest);
         
         if (regressionResponse.prediction_result && regressionResponse.prediction_result.predicted_values) {
           results.trendAnalysis = {
@@ -121,7 +121,7 @@ export class LogsAnalysisAdapter extends LogsAdapterCore {
           }
         };
         
-        const dbscanResponse = await this.request('POST', `${mlEndpoint}/execute_cluster`, dbscanRequest);
+        const dbscanResponse = await this.callRequest('POST', `${mlEndpoint}/execute_cluster`, dbscanRequest);
         
         if (dbscanResponse.cluster_result && dbscanResponse.cluster_result.cluster_indices) {
           // Identify outliers (cluster -1)

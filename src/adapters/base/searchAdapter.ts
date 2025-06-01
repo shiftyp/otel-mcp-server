@@ -1,4 +1,5 @@
 import { EventEmitter } from 'events';
+import { ErrorResponse } from '../../utils/errorHandling.js';
 
 /**
  * Common options for all search engine adapters
@@ -65,6 +66,30 @@ export abstract class BaseSearchAdapter extends EventEmitter {
    * @param feature The feature to check
    */
   public abstract supportsFeature(feature: string): boolean;
+  
+  /**
+   * Query logs with custom query
+   * @param query The query object
+   */
+  public abstract queryLogs(query: any): Promise<any>;
+  
+  /**
+   * List available log fields
+   * @param includeSourceDoc Whether to include source document fields
+   */
+  public abstract listLogFields(includeSourceDoc?: boolean): Promise<any[] | ErrorResponse>;
+  
+  /**
+   * Query metrics with custom query
+   * @param query The query object
+   */
+  public abstract searchMetrics(query: any): Promise<any>;
+  
+  /**
+   * Query traces with custom query
+   * @param query The query object
+   */
+  public abstract queryTraces(query: any): Promise<any>;
 }
 
 /**

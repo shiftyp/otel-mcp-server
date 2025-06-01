@@ -18,24 +18,74 @@ export class LogsAdapterCore extends OpenSearchCore {
   }
   
   /**
+   * Query logs with custom query (required by OpenSearchCore)
+   * @param query The query object
+   */
+  public async queryLogs(query: any): Promise<any> {
+    logger.info('[OpenSearch LogsAdapterCore] queryLogs called but not implemented in this adapter');
+    throw new Error('queryLogs not implemented in LogsAdapterCore');
+  }
+  
+  /**
+   * List available log fields (required by OpenSearchCore)
+   * @param includeSourceDoc Whether to include source document fields
+   */
+  public async listLogFields(includeSourceDoc?: boolean): Promise<any[]> {
+    logger.info('[OpenSearch LogsAdapterCore] listLogFields called but not implemented in this adapter');
+    throw new Error('listLogFields not implemented in LogsAdapterCore');
+  }
+  
+  /**
+   * Query metrics with custom query (required by OpenSearchCore)
+   * @param query The query object
+   */
+  public async searchMetrics(query: any): Promise<any> {
+    logger.info('[OpenSearch LogsAdapterCore] searchMetrics called but not implemented in this adapter');
+    throw new Error('searchMetrics not implemented in LogsAdapterCore');
+  }
+  
+  /**
+   * Query traces with custom query (required by OpenSearchCore)
+   * @param query The query object
+   */
+  public async queryTraces(query: any): Promise<any> {
+    logger.info('[OpenSearch LogsAdapterCore] queryTraces called but not implemented in this adapter');
+    throw new Error('queryTraces not implemented in LogsAdapterCore');
+  }
+  
+  /**
    * Recursively extract fields from mapping properties
    */
-  protected extractFields(properties: any, prefix: string, fields: any[]): void {
+  protected extractFields(properties: any, prefix: string, fields: any[], processedFields: Set<string> = new Set()): void {
     for (const fieldName in properties) {
       if (Object.prototype.hasOwnProperty.call(properties, fieldName)) {
         const field = properties[fieldName];
         const fullName = prefix ? `${prefix}.${fieldName}` : fieldName;
         
+        // Check if we've already processed this field to avoid duplicates
+        if (processedFields.has(fullName)) continue;
+        processedFields.add(fullName);
+        
+        // Check if this is a text field that might have a keyword subfield
+        let hasKeywordField = false;
+        if (field.type === 'text' && field.fields && field.fields.keyword) {
+          hasKeywordField = true;
+        }
+        
         // Add the field to the list
         fields.push({
           name: fullName,
           type: field.type || 'object',
-          description: field.description || ''
+          description: field.description || '',
+          searchable: true,
+          aggregatable: field.type !== 'text',
+          hasKeywordField: hasKeywordField,
+          keywordField: hasKeywordField ? `${fullName}.keyword` : undefined
         });
         
         // Recursively process nested properties
         if (field.properties) {
-          this.extractFields(field.properties, fullName, fields);
+          this.extractFields(field.properties, fullName, fields, processedFields);
         }
       }
     }

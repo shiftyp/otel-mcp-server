@@ -56,7 +56,7 @@ export class TraceAnalysis extends TraceCore {
   /**
    * Get the root span for a trace
    */
-  protected async getRootSpan(traceId: string): Promise<any> {
+  public async getRootSpan(traceId: string): Promise<any> {
     // Query for the root span (parent span ID is empty or equals to trace ID)
     const query = {
       query: {
@@ -88,7 +88,7 @@ export class TraceAnalysis extends TraceCore {
   /**
    * Get all spans for a trace
    */
-  protected async getAllSpansForTrace(traceId: string): Promise<any[]> {
+  public async getAllSpansForTrace(traceId: string): Promise<any[]> {
     const query = {
       query: {
         bool: {

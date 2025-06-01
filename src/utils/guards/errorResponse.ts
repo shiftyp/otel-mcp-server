@@ -12,7 +12,11 @@ export class ErrorResponseFormatter {
    * @param params Optional parameters that were part of the original request
    * @returns Formatted MCP tool output
    */
-  static formatErrorResponse(error: any, params?: Record<string, any>): MCPToolOutput {
+  static formatErrorResponse(error: unknown, params?: Record<string, any>): MCPToolOutput {
+    // Helper: check if value is a plain object (not array/function/null)
+    function isPlainObject(val: unknown): val is Record<string, unknown> {
+      return typeof val === 'object' && val !== null && !Array.isArray(val);
+    }
     // Log the error for debugging
     logger.error('[ErrorResponseFormatter] Formatting error response', {
       errorType: error instanceof Error ? error.constructor.name : typeof error,
@@ -36,7 +40,11 @@ export class ErrorResponseFormatter {
         type: 'text',
         text: `Data Type: ${error.dataType}\nDetails: ${JSON.stringify(error.details, null, 2)}`
       });
-    } else if (error.name === 'ConnectionError' || error.message?.includes('ECONNREFUSED')) {
+    } else if (
+      isPlainObject(error) &&
+      ('name' in error && (error as any).name === 'ConnectionError' ||
+      ('message' in error && typeof (error as any).message === 'string' && (error as any).message.includes('ECONNREFUSED')))
+    ) {
       // Handle Elasticsearch connection errors
       errorMessage = 'Could not connect to Elasticsearch. Please ensure Elasticsearch is running and accessible.';
       suggestions = [
@@ -45,21 +53,37 @@ export class ErrorResponseFormatter {
         'Check network connectivity to Elasticsearch',
         'Ensure Elasticsearch security settings allow connections'
       ];
-    } else if (error.meta?.body?.error?.type === 'index_not_found_exception') {
+    } else if (
+      isPlainObject(error) &&
+      'meta' in error && isPlainObject(error.meta) &&
+      'body' in error.meta && isPlainObject(error.meta.body) &&
+      'error' in error.meta.body && isPlainObject(error.meta.body.error) &&
+      'type' in error.meta.body.error && error.meta.body.error.type === 'index_not_found_exception'
+    ) {
       // Handle index not found errors
-      const indexName = error.meta?.body?.error?.index || 'unknown';
+      const indexName = (isPlainObject(error) && 'meta' in error && isPlainObject(error.meta) && 'body' in error.meta && isPlainObject(error.meta.body) && 'error' in error.meta.body && isPlainObject(error.meta.body.error) && 'index' in error.meta.body.error)
+        ? error.meta.body.error.index
+        : 'unknown';
       errorMessage = `Index not found: ${indexName}`;
       suggestions = [
         'Ensure OpenTelemetry data is being sent to Elasticsearch',
         'Check index naming patterns in the configuration',
         'Verify index lifecycle management settings'
       ];
-    } else if (error.meta?.body?.error?.type === 'search_phase_execution_exception') {
+    } else if (
+      isPlainObject(error) &&
+      'meta' in error && isPlainObject(error.meta) &&
+      'body' in error.meta && isPlainObject(error.meta.body) &&
+      'error' in error.meta.body && isPlainObject(error.meta.body.error) &&
+      'type' in error.meta.body.error && error.meta.body.error.type === 'search_phase_execution_exception'
+    ) {
       // Handle search execution errors
       errorMessage = 'Error executing search query';
       
       // Extract more specific error details if available
-      const rootCause = error.meta?.body?.error?.root_cause?.[0];
+      const rootCause = (isPlainObject(error) && 'meta' in error && isPlainObject(error.meta) && 'body' in error.meta && isPlainObject(error.meta.body) && 'error' in error.meta.body && isPlainObject(error.meta.body.error) && 'root_cause' in error.meta.body.error && Array.isArray(error.meta.body.error.root_cause))
+        ? error.meta.body.error.root_cause[0]
+        : undefined;
       if (rootCause) {
         errorMessage += `: ${rootCause.type} - ${rootCause.reason}`;
       }
@@ -69,16 +93,24 @@ export class ErrorResponseFormatter {
         'Verify field names and types in your query',
         'Ensure the query is compatible with your Elasticsearch version'
       ];
-    } else if (error.meta?.body?.error?.type) {
+    } else if (
+      isPlainObject(error) &&
+      'meta' in error && isPlainObject(error.meta) &&
+      'body' in error.meta && isPlainObject(error.meta.body) &&
+      'error' in error.meta.body && isPlainObject(error.meta.body.error) &&
+      'type' in error.meta.body.error
+    ) {
       // Handle other Elasticsearch API errors
-      const errorType = error.meta.body.error.type;
+      const errorType = (isPlainObject(error) && 'meta' in error && isPlainObject(error.meta) && 'body' in error.meta && isPlainObject(error.meta.body) && 'error' in error.meta.body && isPlainObject(error.meta.body.error) && 'type' in error.meta.body.error)
+        ? error.meta.body.error.type
+        : 'unknown';
       errorMessage = `Elasticsearch API error: ${errorType}`;
       
-      if (error.meta.body.error.reason) {
+      if (isPlainObject(error) && 'meta' in error && isPlainObject(error.meta) && 'body' in error.meta && isPlainObject(error.meta.body) && 'error' in error.meta.body && isPlainObject(error.meta.body.error) && 'reason' in error.meta.body.error && typeof error.meta.body.error.reason === 'string') {
         errorMessage += ` - ${error.meta.body.error.reason}`;
       }
       
-      suggestions = this.getSuggestionsForApiError(errorType);
+      suggestions = this.getSuggestionsForApiError(typeof errorType === 'string' ? errorType : String(errorType));
     } else if (error instanceof Error) {
       // Handle generic Error objects
       errorMessage = error.message || 'Unknown error';

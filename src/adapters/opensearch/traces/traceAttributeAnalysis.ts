@@ -1,5 +1,6 @@
 import { logger } from '../../../utils/logger.js';
 import { TracesAdapterCore } from './traceCore.js';
+import { SearchEngineType } from '../../base/searchAdapter.js';
 
 /**
  * Trace Attribute Analysis using OpenSearch's NLP capabilities

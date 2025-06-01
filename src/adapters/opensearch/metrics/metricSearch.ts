@@ -55,10 +55,13 @@ export class MetricsSearchAdapter extends MetricsAdapterCore {
   }
   
   /**
-   * Get metric fields with optional search filter
+   * Get metric fields with optional search filter and service filter
+   * @param search Optional search pattern to filter fields
+   * @param serviceFilter Optional service or services to filter fields
+   * @param useSourceDocument Whether to include source document fields
    */
-  public async getMetricFields(search?: string): Promise<any[]> {
-    logger.info('[OpenSearch MetricsSearchAdapter] Getting metric fields', { search });
+  public async getMetricFields(search?: string, serviceFilter?: string | string[], useSourceDocument: boolean = false): Promise<any[]> {
+    logger.info('[OpenSearch MetricsSearchAdapter] Getting metric fields', { search, serviceFilter, useSourceDocument });
     
     try {
       // Use the index pattern for metrics

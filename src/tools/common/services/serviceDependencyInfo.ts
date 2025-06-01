@@ -1,6 +1,7 @@
 import { z } from 'zod';
 import { McpServer } from '@modelcontextprotocol/sdk/server/mcp.js';
 import { ElasticsearchAdapter } from '../../../adapters/elasticsearch/index.js';
+import { createErrorResponse, ErrorResponse, isErrorResponse } from '../../../utils/errorHandling.js';
 import { ElasticGuards } from '../../../utils/guards/index.js';
 import { logger } from '../../../utils/logger.js';
 import { registerMcpTool } from '../../../utils/registerTool.js';
@@ -39,6 +40,17 @@ export function registerServiceDependencyInfoTool(server: McpServer, esAdapter: 
 
         // Get the service dependency graph with span counts
         const dependencyData = await esAdapter.serviceDependencyGraph(startTime, endTime, sampleRate);
+        
+        // Check if we got an error response
+        if (isErrorResponse(dependencyData)) {
+          return {
+            content: [{
+              type: 'text',
+              text: `Error: Failed to get service dependency graph: ${dependencyData.message}`
+            }]
+          };
+        }
+        
         const { relationships, spanCounts } = dependencyData;
 
         // Calculate time range in milliseconds for rate calculations
@@ -92,7 +104,6 @@ export function registerServiceDependencyInfoTool(server: McpServer, esAdapter: 
         });
 
         return {
-          isError: true,
           content: [{
             type: "text",
             text: JSON.stringify({

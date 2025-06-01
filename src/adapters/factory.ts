@@ -17,7 +17,7 @@ export class SearchAdapterFactory {
    * @param config The search engine configuration
    * @returns A search engine adapter instance
    */
-  public static createAdapter(config: SearchEngineConfig): BaseSearchAdapter {
+  public static createAdapter(config: SearchEngineConfig): ElasticsearchAdapter | OpenSearchAdapter {
     const { type, ...adapterOptions } = config;
     
     logger.info(`Creating ${type} adapter with baseURL: ${adapterOptions.baseURL}`);

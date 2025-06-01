@@ -90,7 +90,7 @@ export class LogsAnomalyDetectionAdapter extends LogsAdapterCore {
         }
       };
       
-      const countResponse = await this.request('POST', `/${indexPattern}/_search`, countQuery);
+      const countResponse = await this.callRequest('POST', `/${indexPattern}/_search`, countQuery);
       
       if (!countResponse.aggregations?.message_counts?.buckets) {
         return { anomalies: [], message: "No log messages found" };
@@ -174,21 +174,21 @@ export class LogsAnomalyDetectionAdapter extends LogsAdapterCore {
       };
       
       // Create the detector
-      const createDetectorResponse = await this.request('POST', anomalyDetectionEndpoint, detectorConfig);
+      const createDetectorResponse = await this.callRequest('POST', anomalyDetectionEndpoint, detectorConfig);
       const detectorId = createDetectorResponse.detector_id;
       
       // Start the detector
-      await this.request('POST', `${anomalyDetectionEndpoint}/${detectorId}/_start`, {});
+      await this.callRequest('POST', `${anomalyDetectionEndpoint}/${detectorId}/_start`, {});
       
       // Wait for the detector to initialize
       await new Promise(resolve => setTimeout(resolve, 5000));
       
       // Get the results
-      const resultsResponse = await this.request('GET', `${anomalyDetectionEndpoint}/${detectorId}/results?size=${maxResults}`, {});
+      const resultsResponse = await this.callRequest('GET', `${anomalyDetectionEndpoint}/${detectorId}/results?size=${maxResults}`, {});
       
       // Clean up - stop and delete the detector
-      await this.request('POST', `${anomalyDetectionEndpoint}/${detectorId}/_stop`, {});
-      await this.request('DELETE', `${anomalyDetectionEndpoint}/${detectorId}`, {});
+      await this.callRequest('POST', `${anomalyDetectionEndpoint}/${detectorId}/_stop`, {});
+      await this.callRequest('DELETE', `${anomalyDetectionEndpoint}/${detectorId}`, {});
       
       // Process the results
       const anomalies: any[] = [];

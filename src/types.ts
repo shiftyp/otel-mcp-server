@@ -7,7 +7,4 @@ export type MCPToolContentItem =
 
 export type MCPToolOutput = {
   content: MCPToolContentItem[];
-  _meta?: any;
-  structuredContent?: any;
-  isError?: boolean;
 };

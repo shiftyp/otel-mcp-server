@@ -6,6 +6,8 @@ import {
   LogErrorsModule, 
   LogQueryModule 
 } from './modules/index.js';
+import { createErrorResponse, ErrorResponse, isErrorResponse } from '../../../utils/errorHandling.js';
+import { createBoolQuery, createTermsQuery, createRangeQuery } from '../../../utils/queryBuilder.js';
 
 /**
  * Adapter for interacting with logs in Elasticsearch
@@ -94,6 +96,88 @@ export class LogsAdapter extends ElasticsearchCore {
    */
   public async queryLogs(query: any): Promise<any> {
     return this.queryModule.queryLogs(query);
+  }
+
+  /**
+   * Find logs by trace ID or span IDs
+   * @param traceId Trace ID to search for
+   * @param spanIds Array of span IDs to search for
+   * @param startTime Start time in ISO format
+   * @param endTime End time in ISO format
+   * @param maxResults Maximum number of results to return
+   * @returns Array of log entries related to the trace or spans
+   */
+  public async findLogsByTraceOrSpanIds(
+    traceId: string,
+    spanIds: string[],
+    startTime: string,
+    endTime: string,
+    maxResults: number = 100
+  ): Promise<any[] | ErrorResponse> {
+    try {
+      logger.debug(`[LogsAdapter] Finding logs for trace ${traceId} with ${spanIds.length} spans`);
+      
+      if (!traceId && (!spanIds || spanIds.length === 0)) {
+        return createErrorResponse('Either traceId or spanIds must be provided');
+      }
+      
+      // Build query to find logs with matching trace or span IDs
+      const should = [];
+      
+      // Add trace ID condition
+      if (traceId) {
+        should.push(createTermsQuery('TraceId', [traceId]));
+        should.push(createTermsQuery('trace_id', [traceId]));
+        should.push(createTermsQuery('Attributes.trace_id', [traceId]));
+        should.push(createTermsQuery('attributes.trace_id', [traceId]));
+      }
+      
+      // Add span IDs condition
+      if (spanIds && spanIds.length > 0) {
+        should.push(createTermsQuery('SpanId', spanIds));
+        should.push(createTermsQuery('span_id', spanIds));
+        should.push(createTermsQuery('Attributes.span_id', spanIds));
+        should.push(createTermsQuery('attributes.span_id', spanIds));
+      }
+      
+      // Add time range filter
+      const timeRangeFilter = createRangeQuery('@timestamp', startTime, endTime);
+      
+      // Build the complete query
+      const query = {
+        query: createBoolQuery({
+          should,
+          filter: [timeRangeFilter],
+          minimumShouldMatch: 1
+        }),
+        size: maxResults,
+        sort: [{ '@timestamp': { order: 'asc' } }]
+      };
+      
+      // Execute the query
+      const result = await this.queryLogs(query);
+      
+      if (!result || !result.hits || !result.hits.hits) {
+        return [];
+      }
+      
+      // Extract and return log entries
+      return result.hits.hits.map((hit: any) => {
+        const source = hit._source;
+        return {
+          id: hit._id,
+          timestamp: source['@timestamp'],
+          service: source.Resource?.service?.name || source.service?.name || 'unknown',
+          level: source.SeverityText || source.severityText || source.level || 'unknown',
+          message: source.Body || source.body || source.message || '',
+          trace_id: source.TraceId || source.trace_id || source.Attributes?.trace_id || source.attributes?.trace_id,
+          span_id: source.SpanId || source.span_id || source.Attributes?.span_id || source.attributes?.span_id,
+          attributes: source.Attributes || source.attributes || {}
+        };
+      });
+    } catch (error) {
+      return createErrorResponse(`Error finding logs by trace/span IDs: ${error instanceof Error ? error.message : String(error)}`);
+    }
   }
 
   /**

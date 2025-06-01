@@ -1,6 +1,7 @@
 import axios, { AxiosInstance, AxiosRequestConfig, AxiosError, InternalAxiosRequestConfig } from 'axios';
 import { EventEmitter } from 'events';
 import { v4 as uuidv4 } from 'uuid';
+import { SearchEngineFeature, SearchEngineType } from '../../base/searchAdapter.js';
 
 import { logger } from '../../../utils/logger.js';
 
@@ -172,21 +173,83 @@ export class ElasticsearchCore extends EventEmitter {
   }
   
   /**
-   * Get list of Elasticsearch indices
+   * Get a list of indices from Elasticsearch
    */
   public async getIndices(): Promise<string[]> {
     try {
-      const response = await this.request('GET', '/_cat/indices?format=json');
-      
-      // Get all indices and sort by name
-      const filteredIndices = response
-        .map((index: any) => index.index)
-        .sort();
-      
-      return filteredIndices;
+      const response = await this.callEsRequest('GET', '/_cat/indices?format=json');
+      return response.map((index: any) => index.index);
     } catch (error) {
       logger.error('Failed to get Elasticsearch indices', { error });
-      throw error;
+      return [];
+    }
+  }
+  
+  /**
+   * Check if Elasticsearch is available
+   */
+  public async checkConnection(): Promise<boolean> {
+    try {
+      await this.callEsRequest('GET', '/');
+      return true;
+    } catch (error) {
+      logger.error('Failed to connect to Elasticsearch', { error });
+      return false;
+    }
+  }
+  
+  /**
+   * Get information about Elasticsearch
+   */
+  public async getInfo(): Promise<any> {
+    try {
+      return await this.callEsRequest('GET', '/');
+    } catch (error) {
+      logger.error('Failed to get Elasticsearch info', { error });
+      return { version: { number: 'unknown' } };
+    }
+  }
+  
+  /**
+   * Get the type of search engine
+   */
+  public getType(): string {
+    return SearchEngineType.ELASTICSEARCH;
+  }
+  
+  /**
+   * Get the version of Elasticsearch
+   */
+  public async getVersion(): Promise<string> {
+    try {
+      const info = await this.getInfo();
+      return info.version.number;
+    } catch (error) {
+      logger.error('Failed to get Elasticsearch version', { error });
+      return 'unknown';
+    }
+  }
+  
+  /**
+   * Check if a specific feature is supported by Elasticsearch
+   * @param feature The feature to check
+   */
+  public supportsFeature(feature: string): boolean {
+    // Default feature support for Elasticsearch
+    switch (feature) {
+      case SearchEngineFeature.RUNTIME_FIELDS:
+      case SearchEngineFeature.PAINLESS_SCRIPTING:
+      case SearchEngineFeature.FIELD_COLLAPSING:
+      case SearchEngineFeature.ASYNC_SEARCH:
+      case SearchEngineFeature.SEARCH_AFTER:
+      case SearchEngineFeature.POINT_IN_TIME:
+      case SearchEngineFeature.COMPOSITE_AGGREGATIONS:
+      case SearchEngineFeature.PIPELINE_AGGREGATIONS:
+        return true;
+      case SearchEngineFeature.ML_ANOMALY_DETECTION:
+        return true; // Elasticsearch has its own ML capabilities
+      default:
+        return false;
     }
   }
 }

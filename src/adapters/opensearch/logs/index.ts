@@ -39,10 +39,112 @@ export class LogsAdapter {
   }
   
   /**
-   * Get log fields with optional search filter
+   * Query logs with a custom query
+   * @param query The query object
    */
-  public async getLogFields(search?: string): Promise<any[]> {
-    return this.searchAdapter.getLogFields(search);
+  public async queryLogs(query: any): Promise<any> {
+    // Prepare the query
+    const searchQuery = { ...query };
+    
+    // If search parameter is provided, convert it to a query_string query
+    if (searchQuery.search && typeof searchQuery.search === 'string') {
+      searchQuery.query = {
+        query_string: {
+          query: searchQuery.search,
+          default_field: '*',
+          default_operator: 'AND'
+        }
+      };
+      delete searchQuery.search;
+    }
+    
+    // Execute the query against the logs index
+    return this.coreAdapter.request('POST', '/logs-*/_search', searchQuery);
+  }
+  
+  /**
+   * Find logs matching a query string with additional filters
+   * @param params Search parameters including query, time range, service, etc.
+   */
+  public async findLogs(params: {
+    query: string;
+    startTime?: string;
+    endTime?: string;
+    service?: string;
+    size?: number;
+    includeTraces?: boolean;
+    fields?: string[];
+    sort?: 'asc' | 'desc';
+  }): Promise<any> {
+    // Build the query
+    const query: any = {
+      bool: {
+        must: [
+          {
+            query_string: {
+              query: params.query,
+              default_field: '*',
+              default_operator: 'AND'
+            }
+          }
+        ]
+      }
+    };
+    
+    // Add time range filter if provided
+    if (params.startTime || params.endTime) {
+      const rangeFilter: any = {
+        range: {
+          '@timestamp': {}
+        }
+      };
+      
+      if (params.startTime) {
+        rangeFilter.range['@timestamp'].gte = params.startTime;
+      }
+      
+      if (params.endTime) {
+        rangeFilter.range['@timestamp'].lte = params.endTime;
+      }
+      
+      query.bool.must.push(rangeFilter);
+    }
+    
+    // Add service filter if provided
+    if (params.service) {
+      query.bool.must.push({
+        term: {
+          'service.name': params.service
+        }
+      });
+    }
+    
+    // Build the search request
+    const searchRequest: any = {
+      query,
+      size: params.size || 100,
+      sort: [
+        { '@timestamp': { order: params.sort || 'desc' } }
+      ]
+    };
+    
+    // Add fields to include if specified
+    if (params.fields && params.fields.length > 0) {
+      searchRequest._source = params.fields;
+    }
+    
+    // Execute the search
+    return this.coreAdapter.request('POST', '/logs-*/_search', searchRequest);
+  }
+  
+  /**
+   * Get log fields with optional search filter and service filter
+   * @param search Optional search pattern to filter fields
+   * @param serviceFilter Optional service or services to filter fields
+   * @param useSourceDocument Whether to include source document fields
+   */
+  public async getLogFields(search?: string, serviceFilter?: string | string[], useSourceDocument: boolean = true): Promise<any[]> {
+    return this.searchAdapter.getLogFields(search, serviceFilter, useSourceDocument);
   }
   
   /**

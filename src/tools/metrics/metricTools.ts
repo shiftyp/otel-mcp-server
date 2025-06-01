@@ -83,7 +83,7 @@ export function registerMetricTools(server: McpServer, esAdapter: ElasticsearchA
             
             // Build a query to find documents matching the exact service names using term queries
             // This ensures exact matching without wildcards or partial matching
-            const serviceQuery: any = {
+            const serviceQuery: Record<string, unknown> = {
               bool: {
                 should: services.map(service => ({
                   term: { 'resource.attributes.service.name': service }
@@ -106,15 +106,23 @@ export function registerMetricTools(server: McpServer, esAdapter: ElasticsearchA
               // Extract field names from all returned documents
               for (const hit of response.hits.hits) {
                 if (hit._source) {
+                  // Helper type guard
+                  const isRecord = (val: unknown): val is Record<string, unknown> => {
+                    return typeof val === 'object' && val !== null && !Array.isArray(val);
+                  };
                   // Recursively extract field names
-                  const extractFields = (obj: any, prefix: string) => {
+                  const extractFields = (obj: Record<string, unknown>, prefix: string) => {
                     if (!obj || typeof obj !== 'object') return;
                     
                     for (const key in obj) {
                       const fullPath = prefix ? `${prefix}.${key}` : key;
                       fieldsInService.add(fullPath);
-                      
-                      if (obj[key] && typeof obj[key] === 'object' && !Array.isArray(obj[key])) {
+                      if (
+                        obj[key] &&
+                        typeof obj[key] === 'object' &&
+                        !Array.isArray(obj[key]) &&
+                        isRecord(obj[key])
+                      ) {
                         extractFields(obj[key], fullPath);
                       }
                     }

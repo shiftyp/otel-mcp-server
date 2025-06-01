@@ -12,10 +12,10 @@ interface FieldStat {
  * Tool for searching and analyzing log fields
  */
 export class LogFieldsTool {
-  private esAdapter: ElasticsearchAdapter;
+  private searchAdapter: ElasticsearchAdapter;
 
-  constructor(esAdapter: ElasticsearchAdapter) {
-    this.esAdapter = esAdapter;
+  constructor(searchAdapter: ElasticsearchAdapter) {
+    this.searchAdapter = searchAdapter;
   }
 
   /**
@@ -33,11 +33,11 @@ export class LogFieldsTool {
     try {
       logger.debug('[LogFieldsTool] getLogFields called', { search, serviceOrServices, useSourceDocument });
       
-      // Get all log fields from Elasticsearch
+      // Get all log fields from the search engine
       // Using any type assertion since the adapter method might not be properly typed
       // Default to true if useSourceDocument is undefined
       const includeSourceDoc = useSourceDocument === undefined ? true : useSourceDocument;
-      const logFields = await (this.esAdapter as any).listLogFields(includeSourceDoc);
+      const logFields = await (this.searchAdapter as any).listLogFields(includeSourceDoc);
       
       // Filter fields by search term if provided
       let filteredFields = logFields;
@@ -52,7 +52,7 @@ export class LogFieldsTool {
       if (serviceOrServices) {
         // Get field stats for the filtered fields, passing the service filter
         const fieldStats = await getFieldStats(
-          this.esAdapter,
+          this.searchAdapter,
           '.ds-logs-*',
           undefined, // No additional field name filtering here
           serviceOrServices // Pass the service or services directly
@@ -150,17 +150,15 @@ export class LogFieldsTool {
       
       // Add service filter if provided
       if (serviceOrServices) {
-        // Convert to array if string
+        // Convert single service to array
         const services = Array.isArray(serviceOrServices) ? serviceOrServices : [serviceOrServices];
         
-        // Build service filter query
-        const serviceQueries = services.map(service => {
-          return {
-            term: {
-              'resource.attributes.service.name': service
-            }
-          };
-        });
+        // Build service queries
+        const serviceQueries = services.map(service => ({
+          match_phrase: {
+            'service.name': service
+          }
+        }));
         
         // Add to main query
         query.bool.must.push({
@@ -172,8 +170,12 @@ export class LogFieldsTool {
       }
       
       // Execute query to get a sample of documents
-      const response = await this.esAdapter.callEsRequest('POST', '/.ds-logs-*/_search', {
-        query,
+      const response = await this.searchAdapter.callRequest('POST', '/.ds-logs-*/_search', {
+        query: {
+          exists: {
+            field: fieldName
+          }
+        },
         size: 10,
         _source: true
       });

@@ -1,6 +1,7 @@
 import { z } from 'zod';
 import { McpServer } from '@modelcontextprotocol/sdk/server/mcp.js';
 import { ElasticsearchAdapter } from '../../../adapters/elasticsearch/index.js';
+import { createErrorResponse, ErrorResponse, isErrorResponse } from '../../../utils/errorHandling.js';
 import { ElasticGuards } from '../../../utils/guards/index.js';
 import { logger } from '../../../utils/logger.js';
 import { registerMcpTool } from '../../../utils/registerTool.js';
@@ -76,11 +77,23 @@ export function registerServicesGetTool(server: McpServer, esAdapter: Elasticsea
         }
         
         // Get ALL services first without filtering
-        const allServices = await esAdapter.getServices(undefined, args.startTime, args.endTime);
+        const allServicesResult = await esAdapter.getServices(undefined, args.startTime, args.endTime);
+        
+        // Check if we got an error response
+        if (isErrorResponse(allServicesResult)) {
+          return {
+            content: [{
+              type: 'text',
+              text: `Error: Failed to get services: ${allServicesResult.message}`
+            }]
+          };
+        }
+        
+        const allServices = allServicesResult;
         
         // Create a map of service names to their versions from the full service list
         const serviceVersionMap = new Map<string, string[]>();
-        allServices.forEach(service => {
+        allServices.forEach((service: {name: string, versions: string[]}) => {
           serviceVersionMap.set(service.name, service.versions);
         });
         
@@ -89,7 +102,19 @@ export function registerServicesGetTool(server: McpServer, esAdapter: Elasticsea
         if (originalSearch) {
           // Apply the original search filter
           args.search = originalSearch;
-          services = await esAdapter.getServices(args.search, args.startTime, args.endTime);
+          const filteredServicesResult = await esAdapter.getServices(args.search, args.startTime, args.endTime);
+          
+          // Check if we got an error response
+          if (isErrorResponse(filteredServicesResult)) {
+            return {
+              content: [{
+                type: 'text',
+                text: `Error: Failed to get filtered services: ${filteredServicesResult.message}`
+              }]
+            };
+          }
+          
+          services = filteredServicesResult;
         }
         
         // Convert to map for easier manipulation
@@ -179,9 +204,14 @@ export function registerServicesGetTool(server: McpServer, esAdapter: Elasticsea
         
         return {
           content: [
+            { type: 'text', text: JSON.stringify({
+              error: error instanceof Error ? error.message : String(error),
+              details: {
+                tool: 'servicesGet'
+              }
+            }) },
             { type: 'text', text: `Error retrieving services: ${error instanceof Error ? error.message : String(error)}` }
-          ],
-          isError: true
+          ]
         };
       }
     }

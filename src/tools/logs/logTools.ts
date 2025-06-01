@@ -7,15 +7,18 @@ import { registerMcpTool } from '../../utils/registerTool.js';
 import { LogFieldsTool } from './logFields.js';
 import { ElasticGuards } from '../../utils/guards/index.js';
 import { registerLogAnomaliesDetectTool } from './logAnomaliesDetect.js';
+import { createDynamicDescription, getSearchEngineName } from '../../utils/dynamicDescriptions.js';
   
 /**
  * Register log-related tools with the MCP server
  */
-export function registerLogTools(server: McpServer, esAdapter: ElasticsearchAdapter) {
-  const logFieldsTool = new LogFieldsTool(esAdapter);
+export function registerLogTools(server: McpServer, searchAdapter: ElasticsearchAdapter) {
+  const logFieldsTool = new LogFieldsTool(searchAdapter);
 
+  // Get the search engine name for dynamic descriptions
+  const searchEngineName = getSearchEngineName(searchAdapter);
 
-  registerLogAnomaliesDetectTool(server, esAdapter)
+  registerLogAnomaliesDetectTool(server, searchAdapter)
 
   // Log fields schema with co-occurring fields
   registerMcpTool(
@@ -23,9 +26,9 @@ export function registerLogTools(server: McpServer, esAdapter: ElasticsearchAdap
     'logFieldsGet',
     { 
       search: z.string().describe('Filter fields by name pattern. Pass an empty string to return all fields'),
-      service: z.string().optional().describe('Filter to fields from a specific service. Use servicesGet tool to find available services'),
-      services: z.array(z.string()).optional().describe('Filter to fields from multiple services (overrides service parameter). Use servicesGet tool to find available services'),
-      useSourceDocument: z.boolean().optional().default(true).describe('Include source document fields in results')
+      service: z.string().optional().describe(`Filter to fields from a specific service. Use servicesGet tool to find available services`),
+      services: z.array(z.string()).optional().describe(`Filter to fields from multiple services (overrides service parameter). Use servicesGet tool to find available services`),
+      useSourceDocument: z.boolean().optional().default(true).describe(`Include source document fields in results`)
     },
     async (args: { search?: string, service?: string, services?: string[], useSourceDocument?: boolean } = {}, extra: unknown) => {
       try {
@@ -101,7 +104,7 @@ export function registerLogTools(server: McpServer, esAdapter: ElasticsearchAdap
     }).strict().describe('Execute custom Elasticsearch query against log data') },
     async (args: { query?: any }) => {
       try {
-        const resp = await esAdapter.queryLogs(args.query);
+        const resp = await searchAdapter.queryLogs(args.query);
         const output: MCPToolOutput = { content: [{ type: 'text', text: JSON.stringify(resp) }] };
         logger.info('[MCP TOOL] logs result', { args, hits: resp.hits?.total?.value || 0 });
         return output;

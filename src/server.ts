@@ -6,46 +6,62 @@ import { McpServer } from '@modelcontextprotocol/sdk/server/mcp.js';
 import { StdioServerTransport } from '@modelcontextprotocol/sdk/server/stdio.js';
 
 import { ElasticsearchAdapter } from './adapters/elasticsearch/index.js';
+import { OpenSearchAdapter } from './adapters/opensearch/index.js';
+import { BaseSearchAdapter } from './adapters/base/searchAdapter.js';
+import { SearchAdapterFactory } from './adapters/factory.js';
 import { registerAllTools } from './tools/index.js';
 import { logger } from './utils/logger.js';
 
 // Instantiate the MCP server
-const ELASTICSEARCH_URL = process.env.ELASTICSEARCH_URL || '';
-const ELASTICSEARCH_USERNAME = process.env.ELASTICSEARCH_USERNAME || '';
-const ELASTICSEARCH_PASSWORD = process.env.ELASTICSEARCH_PASSWORD || '';
-const ELASTICSEARCH_API_KEY = process.env.ELASTICSEARCH_API_KEY || '';
+const SEARCH_ENGINE_URL = process.env.ELASTICSEARCH_URL || '';
+const SEARCH_ENGINE_USERNAME = process.env.ELASTICSEARCH_USERNAME || '';
+const SEARCH_ENGINE_PASSWORD = process.env.ELASTICSEARCH_PASSWORD || '';
+const SEARCH_ENGINE_API_KEY = process.env.ELASTICSEARCH_API_KEY || '';
+const USE_COMPATIBILITY_MODE = process.env.USE_COMPATIBILITY_MODE === 'true';
 
 const server = new McpServer({
   name: process.env.SERVER_NAME || 'otel-mcp-server',
   version: '1.0.0',
 });
 
-const esAdapter = new ElasticsearchAdapter({
-  baseURL: ELASTICSEARCH_URL,
-  username: ELASTICSEARCH_USERNAME,
-  password: ELASTICSEARCH_PASSWORD,
-  apiKey: ELASTICSEARCH_API_KEY,
-  timeout: 30000,
-  maxRetries: 3,
-  retryDelay: 1000,
-});
+// Will be initialized after detecting the search engine type
+let searchAdapter: ElasticsearchAdapter | OpenSearchAdapter;
 
 // Register all MCP tools with the server
-// This will be called after Elasticsearch connection validation
+// This will be called after search engine connection validation
 
-async function validateElasticsearchConnection() {
+async function detectAndConnectToSearchEngine() {
   try {
-    logger.info('Attempting to connect to Elasticsearch', { url: ELASTICSEARCH_URL });
-    const indices = await esAdapter.getIndices();
-    logger.info('Successfully retrieved indices from Elasticsearch', { count: indices.length });
-    return indices.length > 0;
+    logger.info('Attempting to detect search engine type', { url: SEARCH_ENGINE_URL });
+    
+    // Detect the search engine type
+    const { type, version } = await SearchAdapterFactory.detectSearchEngineType(SEARCH_ENGINE_URL);
+    logger.info('Detected search engine', { type, version });
+    
+    // Create the appropriate adapter
+    searchAdapter = SearchAdapterFactory.createAdapter({
+      type,
+      baseURL: SEARCH_ENGINE_URL,
+      username: SEARCH_ENGINE_USERNAME,
+      password: SEARCH_ENGINE_PASSWORD,
+      apiKey: SEARCH_ENGINE_API_KEY,
+      timeout: 30000,
+      maxRetries: 3,
+      retryDelay: 1000,
+      useCompatibilityMode: USE_COMPATIBILITY_MODE
+    });
+    
+    // Validate connection
+    const indices = await searchAdapter.getIndices();
+    logger.info(`Successfully retrieved indices from ${type}`, { count: indices.length });
+    return { valid: indices.length > 0, type, version };
   } catch (err) {
-    logger.error('Failed to connect to Elasticsearch', { 
-      url: ELASTICSEARCH_URL,
+    logger.error('Failed to connect to search engine', { 
+      url: SEARCH_ENGINE_URL,
       error: err instanceof Error ? err.message : String(err),
       stack: err instanceof Error ? err.stack : undefined
     });
-    return false;
+    return { valid: false, type: 'unknown', version: 'unknown' };
   }
 }
 
@@ -63,19 +79,19 @@ function validateAndLogToolsAndResources() {
   logger.info('Registered resources:', { resources });
 }
 
-// Validate Elasticsearch connection before starting server
-validateElasticsearchConnection().then(async valid => {
+// Detect search engine type and validate connection before starting server
+detectAndConnectToSearchEngine().then(async ({ valid, type, version }) => {
   if (!valid) {
-    logger.error('Failed to validate Elasticsearch connection. Check your configuration.');
+    logger.error('Failed to validate search engine connection. Check your configuration.');
     process.exit(1);
   }
   
-  logger.info('Successfully connected to Elasticsearch');
+  logger.info(`Successfully connected to ${type} version ${version}`);
   
-  // Register all MCP tools with the server after validating Elasticsearch connection
+  // Register all MCP tools with the server after validating connection
   try {
-    await registerAllTools(server, esAdapter);
-    logger.info('Successfully registered available MCP tools');
+    await registerAllTools(server, searchAdapter);
+    logger.info(`Successfully registered available MCP tools for ${type}`);
   } catch (error) {
     logger.error('Error registering MCP tools', {
       error: error instanceof Error ? error.message : String(error),

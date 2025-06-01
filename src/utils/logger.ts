@@ -42,35 +42,35 @@ export class Logger {
     this.enableConsole = enable;
   }
 
-  public debug(message: string, data?: any): void {
+  public debug(message: string, data?: unknown): void {
     if (this.level <= LogLevel.DEBUG) {
       this.writeLog('DEBUG', message, data, this.debugLogStream);
     }
   }
 
-  public info(message: string, data?: any): void {
+  public info(message: string, data?: unknown): void {
     if (this.level <= LogLevel.INFO) {
       this.writeLog('INFO', message, data);
     }
   }
 
-  public warn(message: string, data?: any): void {
+  public warn(message: string, data?: unknown): void {
     if (this.level <= LogLevel.WARN) {
       this.writeLog('WARN', message, data);
     }
   }
 
-  public error(message: string, data?: any): void {
+  public error(message: string, data?: unknown): void {
     if (this.level <= LogLevel.ERROR) {
       this.writeLog('ERROR', message, data);
     }
   }
 
-  public log(message: string, data?: any): void {
+  public log(message: string, data?: unknown): void {
     this.info(message, data);
   }
 
-  private writeLog(level: string, message: string, data?: any, stream?: fs.WriteStream): void {
+  private writeLog(level: string, message: string, data?: unknown, stream?: fs.WriteStream): void {
     const timestamp = new Date().toISOString();
     const logEntry = {
       timestamp,

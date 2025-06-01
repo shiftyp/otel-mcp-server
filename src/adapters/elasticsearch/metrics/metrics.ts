@@ -5,6 +5,9 @@ import {
   MetricAggregationModule, 
   MetricQueryModule 
 } from './modules/index.js';
+import { createErrorResponse, ErrorResponse, isErrorResponse } from '../../../utils/errorHandling.js';
+import { createBoolQuery, createTermQuery, createRangeQuery, createQueryStringQuery } from '../../../utils/queryBuilder.js';
+import { ServiceResolver } from '../../../utils/serviceResolver.js';
 
 /**
  * Adapter for interacting with metrics in Elasticsearch
@@ -76,6 +79,86 @@ export class MetricsAdapter extends ElasticsearchCore {
    * @returns Query results
    */
   public async queryMetrics(query: any): Promise<any> {
+    return this.queryModule.queryMetrics(query);
+  }
+  
+  /**
+   * Get metrics for a specific service
+   * @param service Service name to get metrics for
+   * @param startTime Start time in ISO format
+   * @param endTime End time in ISO format
+   * @param maxResults Maximum number of results to return
+   * @returns Array of metrics for the service
+   */
+  public async getMetricsForService(
+    service: string,
+    startTime: string,
+    endTime: string,
+    maxResults: number = 100
+  ): Promise<any[] | ErrorResponse> {
+    try {
+      logger.debug(`[MetricsAdapter] Getting metrics for service ${service}`);
+      
+      if (!service) {
+        return createErrorResponse('Service name is required');
+      }
+      
+      // Create service query using the ServiceResolver for consistent handling
+      const serviceQuery = ServiceResolver.createServiceQuery(
+        service,
+        'METRICS',
+        { allowWildcards: true }
+      );
+      
+      if (isErrorResponse(serviceQuery)) {
+        return serviceQuery;
+      }
+      
+      // Add time range filter
+      const timeRangeFilter = createRangeQuery('@timestamp', startTime, endTime);
+      
+      // Build the complete query
+      const query = {
+        query: createBoolQuery({
+          must: [serviceQuery],
+          filter: [timeRangeFilter]
+        }),
+        size: maxResults,
+        sort: [{ '@timestamp': { order: 'desc' } }]
+      };
+      
+      // Execute the query
+      const result = await this.queryMetrics(query);
+      
+      if (!result || !result.hits || !result.hits.hits) {
+        return [];
+      }
+      
+      // Extract and return metric entries
+      return result.hits.hits.map((hit: any) => {
+        const source = hit._source;
+        return {
+          id: hit._id,
+          timestamp: source['@timestamp'],
+          service: source.Resource?.service?.name || source.service?.name || 'unknown',
+          name: source.name || source.Name || source.metric_name || 'unknown',
+          value: source.value || source.Value || source.gauge?.value || source.sum?.value || 0,
+          unit: source.unit || source.Unit || '',
+          attributes: source.Attributes || source.attributes || {}
+        };
+      });
+    } catch (error) {
+      return createErrorResponse(`Error getting metrics for service: ${error instanceof Error ? error.message : String(error)}`);
+    }
+  }
+
+  /**
+   * Search metrics with a custom query (required by BaseSearchAdapter)
+   * @param query The query to execute
+   * @returns Search results
+   */
+  public async searchMetrics(query: any): Promise<any> {
+    logger.info('[MetricsAdapter] Searching metrics with query', { query });
     return this.queryModule.queryMetrics(query);
   }
 

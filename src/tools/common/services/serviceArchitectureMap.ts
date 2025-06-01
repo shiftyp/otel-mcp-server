@@ -1,6 +1,7 @@
 import { z } from 'zod';
 import { McpServer } from '@modelcontextprotocol/sdk/server/mcp.js';
 import { ElasticsearchAdapter } from '../../../adapters/elasticsearch/index.js';
+import { createErrorResponse, ErrorResponse, isErrorResponse } from '../../../utils/errorHandling.js';
 import { ElasticGuards } from '../../../utils/guards/index.js';
 import { logger } from '../../../utils/logger.js';
 import { registerMcpTool } from '../../../utils/registerTool.js';
@@ -127,10 +128,33 @@ export function registerServiceArchitectureMapTool(server: McpServer, esAdapter:
         
         // Get the service dependency graph - this returns direct relationships between services and span counts
         const dependencyData = await esAdapter.serviceDependencyGraph(startTime, endTime);
+        
+        // Check if we got an error response
+        if (isErrorResponse(dependencyData)) {
+          return {
+            content: [{
+              type: 'text',
+              text: `Error: Failed to get service dependency graph: ${dependencyData.message}`
+            }]
+          };
+        }
+        
         const { relationships, spanCounts } = dependencyData;
         
         // Build the tree structure from the relationships data
-        const treeData: TreeData = await esAdapter.buildServiceDependencyTree(relationships);
+        const treeDataResult = await esAdapter.buildServiceDependencyTree(relationships);
+        
+        // Check if we got an error response
+        if (isErrorResponse(treeDataResult)) {
+          return {
+            content: [{
+              type: 'text',
+              text: `Error: Failed to build service dependency tree: ${treeDataResult.message}`
+            }]
+          };
+        }
+        
+        const treeData: TreeData = treeDataResult;
         
         // Calculate time range in milliseconds for rate calculations
         const timeRangeMs = new Date(endTime).getTime() - new Date(startTime).getTime();
@@ -291,16 +315,16 @@ export function registerServiceArchitectureMapTool(server: McpServer, esAdapter:
           
           // Just return the list of services and their direct relationships
           const compactRelationships = relationships
-            .filter(rel => rel.count >= minCallCount)
-            .filter(rel => !args.service || rel.parent === args.service || rel.child === args.service)
-            .map(rel => ({
+            .filter((rel: any) => rel.count >= minCallCount)
+            .filter((rel: any) => !args.service || rel.parent === args.service || rel.child === args.service)
+            .map((rel: any) => ({
               source: rel.parent,
               target: rel.child,
               calls: rel.count,
               errors: rel.errorCount || 0,
               errorRate: rel.errorRate || 0
             }))
-            .sort((a, b) => {
+            .sort((a: any, b: any) => {
               if (args.sortBy === 'errors') {
                 return b.errors - a.errors;
               } else if (args.sortBy === 'errorRate') {

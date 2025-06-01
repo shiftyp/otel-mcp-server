@@ -51,7 +51,7 @@ export class LogsVectorSearchAdapter extends LogsAdapterCore {
         model_id: 'huggingface/sentence-transformers/all-MiniLM-L6-v2' // Standard model for text embeddings
       };
       
-      const embeddingResponse = await this.request('POST', textEmbeddingEndpoint, embeddingRequest);
+      const embeddingResponse = await this.callRequest('POST', textEmbeddingEndpoint, embeddingRequest);
       
       if (!embeddingResponse.embedding_vector) {
         return { 
@@ -116,7 +116,7 @@ export class LogsVectorSearchAdapter extends LogsAdapterCore {
         }
       };
       
-      const knnResponse = await this.request('POST', `/${indexPattern}/_search`, knnQuery);
+      const knnResponse = await this.callRequest('POST', `/${indexPattern}/_search`, knnQuery);
       
       // Process the results
       const similarLogs: any[] = [];
@@ -228,7 +228,7 @@ export class LogsVectorSearchAdapter extends LogsAdapterCore {
         ]
       };
       
-      const logsResponse = await this.request('POST', `/${indexPattern}/_search`, logsQuery);
+      const logsResponse = await this.callRequest('POST', `/${indexPattern}/_search`, logsQuery);
       
       if (!logsResponse.hits || !logsResponse.hits.hits || logsResponse.hits.hits.length === 0) {
         return { 
@@ -275,7 +275,7 @@ export class LogsVectorSearchAdapter extends LogsAdapterCore {
         }));
         
         const embeddingResponses = await Promise.all(
-          embeddingRequests.map(req => this.request('POST', textEmbeddingEndpoint, req))
+          embeddingRequests.map(req => this.callRequest('POST', textEmbeddingEndpoint, req))
         );
         
         for (let j = 0; j < embeddingResponses.length; j++) {
@@ -310,7 +310,7 @@ export class LogsVectorSearchAdapter extends LogsAdapterCore {
         }
       };
       
-      const kmeansResponse = await this.request('POST', `${mlEndpoint}/execute_cluster`, kmeansRequest);
+      const kmeansResponse = await this.callRequest('POST', `${mlEndpoint}/execute_cluster`, kmeansRequest);
       
       if (!kmeansResponse.cluster_result || !kmeansResponse.cluster_result.cluster_indices) {
         return { 
