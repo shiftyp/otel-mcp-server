@@ -386,8 +386,8 @@ function registerAnalyzeDependencyEvolutionTool(server: McpServer, osAdapter: Op
 function registerClusterTraceAttributesTool(server: McpServer, osAdapter: OpenSearchAdapter): void {
   const toolName = 'clusterTraceAttributes';
   const schema = {
-    attributeKey: z.string().optional().describe('Trace attribute key to cluster. If not provided, will use text content extraction.'),
-    useTextContent: z.boolean().optional().default(false).describe('Use text content extraction instead of a specific attribute key'),
+    // attributeKey parameter removed - always using text content extraction
+    useTextContent: z.boolean().optional().default(true).describe('Use text content extraction instead of a specific attribute key'),
     textFields: z.array(z.string()).optional().describe('Specific fields to extract text from when using text content extraction'),
     startTime: z.string().describe('Start time (ISO8601, required, e.g. 2023-01-01T00:00:00Z)'),
     endTime: z.string().describe('End time (ISO8601, required, e.g. 2023-01-02T00:00:00Z)'),
@@ -428,9 +428,16 @@ function registerClusterTraceAttributesTool(server: McpServer, osAdapter: OpenSe
         endTime: args.endTime,
         service: args.service,
         samplingEnabled: args.enableSampling,
-        samplingPercent: args.samplingPercent
+        samplingPercent: args.samplingPercent,
+        maxSamples: args.maxSamples,
+        embeddingBatchSize: args.embeddingBatchSize,
+        // Always use text content extraction
+        useTextContent: true,
+        textFields: args.textFields,
+        // Pass embedding provider configuration
+        embeddingProviderConfig
       });
-    
+      
       // Create the options object for clustering
       const clusteringOptions = {
         service: args.service,
@@ -442,18 +449,17 @@ function registerClusterTraceAttributesTool(server: McpServer, osAdapter: OpenSe
         samplingPercent: args.samplingPercent,
         maxSamples: args.maxSamples,
         embeddingBatchSize: args.embeddingBatchSize,
-        // Support for text content extraction
-        useTextContent: args.useTextContent,
+        // Always use text content extraction
+        useTextContent: true,
         textFields: args.textFields,
-        // Pass the attribute key as the field for nested field detection
-        field: args.attributeKey,
         // Pass embedding provider configuration
         embeddingProviderConfig
       };
       
       // Cluster trace attributes using the traces adapter
+      // Using 'text_content' for attributeKey to force text content extraction
       const result = await osAdapter.tracesAdapter.clusterTraceAttributes(
-        args.attributeKey,
+        'text_content',
         args.startTime,
         args.endTime,
         clusteringOptions

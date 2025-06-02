@@ -90,10 +90,42 @@ export function extractTextContent(source: any, options: TextExtractionOptions =
   // Extract dimension/label/attribute fields
   for (const mapField of dimensionFields) {
     const dimensionMap = getNestedValue(source, mapField);
-    if (dimensionMap && typeof dimensionMap === 'object' && !Array.isArray(dimensionMap)) {
-      for (const [key, value] of Object.entries(dimensionMap)) {
-        if (value !== undefined && value !== null && String(value).trim().length > 0) {
-          textContent.push(`${key}:"${value}"`);
+    if (dimensionMap && typeof dimensionMap === 'object') {
+      // Recursive function to process nested objects
+      const processNestedObject = (prefix: string, obj: any) => {
+        if (obj === null || obj === undefined) {
+          return;
+        }
+        
+        if (typeof obj === 'object' && !Array.isArray(obj)) {
+          // Process each property in the object
+          for (const [key, value] of Object.entries(obj)) {
+            const newPrefix = prefix ? `${prefix}.${key}` : key;
+            processNestedObject(newPrefix, value);
+          }
+        } else if (Array.isArray(obj)) {
+          // For arrays, include each element with its index
+          obj.forEach((item, index) => {
+            if (typeof item === 'object' && item !== null) {
+              processNestedObject(`${prefix}[${index}]`, item);
+            } else if (item !== undefined && item !== null) {
+              textContent.push(`${prefix}[${index}]:"${item}"`);
+            }
+          });
+        } else if (obj !== undefined && obj !== null && String(obj).trim().length > 0) {
+          // For primitive values, add them directly
+          textContent.push(`${prefix}:"${obj}"`);
+        }
+      };
+      
+      // Start processing from the top level of the dimension map
+      if (Array.isArray(dimensionMap)) {
+        dimensionMap.forEach((item, index) => {
+          processNestedObject(`${mapField}[${index}]`, item);
+        });
+      } else {
+        for (const [key, value] of Object.entries(dimensionMap)) {
+          processNestedObject(key, value);
         }
       }
     }

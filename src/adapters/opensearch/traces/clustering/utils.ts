@@ -60,9 +60,25 @@ export function buildTraceFilters(
   // Only add the exists filter if we're filtering by a specific attribute
   // and not using text content
   if (attributeKey && !useTextContent) {
+    // For trace.id field, we need to use the correct field name in logs
+    if (attributeKey === 'trace.id' || attributeKey === 'TraceId') {
+      filters.push({
+        exists: {
+          field: 'trace.id'
+        }
+      });
+    } else {
+      filters.push({
+        exists: {
+          field: attributeKey
+        }
+      });
+    }
+  } else if (useTextContent) {
+    // When using text content, ensure we have trace data by requiring trace.id
     filters.push({
       exists: {
-        field: attributeKey
+        field: 'trace.id'
       }
     });
   }

@@ -25,8 +25,27 @@ export class TracesAdapterCore extends OpenSearchCore {
     try {
       // Use callRequest to get the info endpoint
       const info = await this.callRequest('GET', '/', {});
+      
+      // Check for OpenSearch specific fields in the response
+      if (info.version?.distribution === 'opensearch' || info.tagline?.includes('OpenSearch')) {
+        return SearchEngineType.OPENSEARCH;
+      }
+      
+      // Check if the version string includes 'opensearch'
       const version = info.version?.number || '';
-      return version.includes('opensearch') ? SearchEngineType.OPENSEARCH : SearchEngineType.ELASTICSEARCH;
+      if (version.includes('opensearch')) {
+        return SearchEngineType.OPENSEARCH;
+      }
+      
+      // For OpenSearch 2.x, check if the version is in the 2.x range
+      // and if the response has OpenSearch-specific fields
+      if (version.startsWith('2.') && info.version?.build_type) {
+        // This is likely OpenSearch 2.x
+        return SearchEngineType.OPENSEARCH;
+      }
+      
+      // Default to Elasticsearch if none of the above conditions are met
+      return SearchEngineType.ELASTICSEARCH;
     } catch (error) {
       logger.warn('Failed to detect engine type, defaulting to OpenSearch', { error });
       return SearchEngineType.OPENSEARCH;
