@@ -6,7 +6,7 @@ import { MCPToolSchema } from '../../types.js';
 
 // Define the Zod schema
 const TraceFieldsGetArgsSchema = {
-  index: z.string().optional().describe('Specific index to query (optional, uses default if not specified)')
+  search: z.string().optional().describe('Search pattern for field names (supports wildcards, e.g., "span.*", "*.duration", "*error*")')
 };
 
 type TraceFieldsGetArgs = MCPToolSchema<typeof TraceFieldsGetArgsSchema>;
@@ -21,7 +21,7 @@ export class TraceFieldsGetTool extends BaseTool<typeof TraceFieldsGetArgsSchema
     super(adapter, {
       name: 'discoverTraceFields',
       category: ToolCategory.DISCOVERY,
-      description: 'Discover trace field names, types, and usage patterns to understand trace schema',
+      description: 'Discover trace field names, types, and usage patterns. Use search patterns like "span.*", "*.duration", or "*error*" to filter fields',
       requiredCapabilities: []
     });
   }
@@ -32,9 +32,9 @@ export class TraceFieldsGetTool extends BaseTool<typeof TraceFieldsGetArgsSchema
   
   protected async executeImpl(args: TraceFieldsGetArgs): Promise<any> {
     const config = ConfigLoader.get();
-    const index = args.index || config.telemetry.indices.traces;
+    const index = config.telemetry.indices.traces;
     
-    const fields = await this.adapter.getFields(index);
+    const fields = await this.adapter.getFields(index, args.search);
     
     // Group fields by type
     const fieldsByType: Record<string, string[]> = {};
@@ -49,11 +49,32 @@ export class TraceFieldsGetTool extends BaseTool<typeof TraceFieldsGetArgsSchema
     const sampleResult = await this.adapter.query(index, { match_all: {} }, { size: 1 });
     const sampleTrace = sampleResult.hits.hits[0]?._source;
     
+    // If search was provided, include search info
+    const searchInfo = args.search ? {
+      searchPattern: args.search,
+      matchedFields: fields.length,
+      totalFieldsInIndex: await this.adapter.getFields(index).then(allFields => allFields.length)
+    } : null;
+
+    // Identify trace-specific fields
+    const traceSpecificFields = {
+      spanFields: fields.filter(f => f.name.toLowerCase().includes('span')).map(f => f.name),
+      traceFields: fields.filter(f => f.name.toLowerCase().includes('trace')).map(f => f.name),
+      durationFields: fields.filter(f => f.name.toLowerCase().includes('duration')).map(f => f.name),
+      statusFields: fields.filter(f => 
+        f.name.toLowerCase().includes('status') || 
+        f.name.toLowerCase().includes('error')
+      ).map(f => f.name),
+      serviceFields: fields.filter(f => f.name.toLowerCase().includes('service')).map(f => f.name)
+    };
+
     return this.formatJsonOutput({
+      ...(searchInfo ? { search: searchInfo } : {}),
       totalFields: fields.length,
       fieldsByType,
       aggregatableFields: fields.filter(f => f.aggregatable).map(f => f.name),
       searchableFields: fields.filter(f => f.searchable).map(f => f.name),
+      ...traceSpecificFields,
       commonFields: sampleTrace ? Object.keys(sampleTrace).slice(0, 20) : [],
       fieldDetails: fields.slice(0, 100) // First 100 fields with full details
     });

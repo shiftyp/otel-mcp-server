@@ -21,6 +21,7 @@ export { DependencyHealthMonitorTool } from './service/dependencyHealthMonitor.j
 export { PredictiveFailureAnalysisTool } from './service/predictiveFailureAnalysis.js';
 export { CostAnalysisByTraceTool } from './service/costAnalysisByTrace.js';
 export { SloComplianceMonitorTool } from './service/sloComplianceMonitor.js';
+export { ServiceTopologyVisualizationTool } from './service/serviceTopologyVisualization.js';
 
 // ML-powered tools
 export * from './ml/index.js';

@@ -42,6 +42,7 @@ export function registerAllToolClasses(): void {
   globalToolRegistry.register(AnalysisTools.PredictiveFailureAnalysisTool);
   globalToolRegistry.register(AnalysisTools.CostAnalysisByTraceTool);
   globalToolRegistry.register(AnalysisTools.SloComplianceMonitorTool);
+  globalToolRegistry.register(AnalysisTools.ServiceTopologyVisualizationTool);
 
   // Register ML tools (will only be available if backend supports them)
   globalToolRegistry.register(AnalysisTools.SemanticLogSearchTool);

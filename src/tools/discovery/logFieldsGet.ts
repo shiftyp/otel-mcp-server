@@ -7,7 +7,7 @@ import { MCPToolSchema } from '../../types.js';
 
 // Define the Zod schema
 const LogFieldsGetArgsSchema = {
-  index: z.string().optional().describe('Specific index to query (optional, uses default if not specified)')
+  search: z.string().optional().describe('Search pattern for field names (supports wildcards, e.g., "*.error", "log.*", "*duration*")')
 };
 
 type LogFieldsGetArgs = MCPToolSchema<typeof LogFieldsGetArgsSchema>;
@@ -22,7 +22,7 @@ export class LogFieldsGetTool extends BaseTool<typeof LogFieldsGetArgsSchema> {
     super(adapter, {
       name: 'discoverLogFields',
       category: ToolCategory.DISCOVERY,
-      description: 'Discover log field names, types, and co-occurrence patterns to understand log schema',
+      description: 'Discover log field names, types, and co-occurrence patterns. Use search patterns like "*.error", "log.*", or "*duration*" to filter fields',
       requiredCapabilities: []
     });
   }
@@ -33,9 +33,9 @@ export class LogFieldsGetTool extends BaseTool<typeof LogFieldsGetArgsSchema> {
   
   protected async executeImpl(args: LogFieldsGetArgs): Promise<any> {
     const config = ConfigLoader.get();
-    const index = args.index || config.telemetry.indices.logs;
+    const index = config.telemetry.indices.logs;
     
-    const fields = await this.adapter.getFields(index);
+    const fields = await this.adapter.getFields(index, args.search);
     
     // Group fields by type
     const fieldsByType: Record<string, string[]> = {};
@@ -72,7 +72,15 @@ export class LogFieldsGetTool extends BaseTool<typeof LogFieldsGetArgsSchema> {
       topCoOccurringFields[field] = Array.from(coFields).slice(0, 10);
     }
     
+    // If search was provided, include search info
+    const searchInfo = args.search ? {
+      searchPattern: args.search,
+      matchedFields: fields.length,
+      totalFieldsInIndex: await this.adapter.getFields(index).then(allFields => allFields.length)
+    } : null;
+
     return this.formatJsonOutput({
+      ...(searchInfo ? { search: searchInfo } : {}),
       totalFields: fields.length,
       fieldsByType,
       aggregatableFields: fields.filter(f => f.aggregatable).map(f => f.name),
