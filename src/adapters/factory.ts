@@ -1,77 +1,112 @@
-import { BaseSearchAdapter, SearchAdapterOptions, SearchEngineType } from './base/searchAdapter.js';
-import { ElasticsearchAdapter, ElasticsearchAdapterOptions } from './elasticsearch/index.js';
-import { OpenSearchAdapter, OpenSearchAdapterOptions } from './opensearch/index.js';
+import { Client as OSClient } from '@opensearch-project/opensearch';
+import { BaseSearchAdapter } from './base/searchAdapter.js';
+import { OpenSearchAdapter } from './opensearch/opensearchAdapter.js';
 import { logger } from '../utils/logger.js';
 
-export interface SearchEngineConfig extends SearchAdapterOptions {
-  type: string; // 'elasticsearch' or 'opensearch'
-  useCompatibilityMode?: boolean; // For OpenSearch
+export interface AdapterConfig {
+  backend?: 'auto' | 'opensearch';
+  baseURL: string;
+  apiKey?: string;
+  username?: string;
+  password?: string;
+  timeout?: number;
+  maxRetries?: number;
+  retryDelay?: number;
 }
 
 /**
- * Factory class for creating search engine adapters
+ * Detects the backend type by checking the cluster info
  */
-export class SearchAdapterFactory {
-  /**
-   * Create a search engine adapter based on the provided configuration
-   * @param config The search engine configuration
-   * @returns A search engine adapter instance
-   */
-  public static createAdapter(config: SearchEngineConfig): ElasticsearchAdapter | OpenSearchAdapter {
-    const { type, ...adapterOptions } = config;
+async function detectBackendType(config: AdapterConfig): Promise<'opensearch'> {
+  try {
+    const osClient = new OSClient({
+      node: config.baseURL,
+      auth: config.apiKey 
+        ? { apiKey: config.apiKey }
+        : config.username && config.password
+        ? { username: config.username, password: config.password }
+        : undefined
+    });
     
-    logger.info(`Creating ${type} adapter with baseURL: ${adapterOptions.baseURL}`);
-    
-    switch (type.toLowerCase()) {
-      case SearchEngineType.ELASTICSEARCH:
-        return new ElasticsearchAdapter(adapterOptions as ElasticsearchAdapterOptions);
-        
-      case SearchEngineType.OPENSEARCH:
-        return new OpenSearchAdapter({
-          ...adapterOptions,
-          useCompatibilityMode: config.useCompatibilityMode
-        } as OpenSearchAdapterOptions);
-        
-      default:
-        logger.warn(`Unknown search engine type: ${type}, defaulting to Elasticsearch`);
-        return new ElasticsearchAdapter(adapterOptions as ElasticsearchAdapterOptions);
+    const info = await osClient.info();
+    if (info.body?.version) {
+      logger.info('Detected OpenSearch backend', { version: info.body.version });
+      return 'opensearch';
     }
+  } catch (error) {
+    logger.error('Failed to detect backend type', { error });
+    throw new Error('Unable to detect OpenSearch backend. Please check your connection settings.');
+  }
+  
+  return 'opensearch';
+}
+
+/**
+ * Creates an appropriate adapter based on the backend type
+ */
+export async function createAdapter(config: AdapterConfig): Promise<BaseSearchAdapter> {
+  let backendType: 'opensearch';
+  
+  if (config.backend === 'auto' || !config.backend) {
+    backendType = await detectBackendType(config);
+  } else {
+    backendType = 'opensearch';
+  }
+  
+  logger.info('Creating adapter', { backendType });
+  
+  return new OpenSearchAdapter(config);
+}
+
+/**
+ * Factory class for creating adapters with caching
+ */
+export class AdapterFactory {
+  private static instances = new Map<string, BaseSearchAdapter>();
+  
+  /**
+   * Get or create an adapter instance
+   */
+  static async getInstance(config: AdapterConfig): Promise<BaseSearchAdapter> {
+    const key = `${config.backend || 'auto'}-${config.baseURL}`;
+    
+    if (!this.instances.has(key)) {
+      const adapter = await createAdapter(config);
+      this.instances.set(key, adapter);
+    }
+    
+    return this.instances.get(key)!;
   }
   
   /**
-   * Auto-detect the search engine type by querying the endpoint
-   * @param baseURL The base URL of the search engine
-   * @returns The detected search engine type and version
+   * Clear cached instances
    */
-  public static async detectSearchEngineType(baseURL: string): Promise<{ 
-    type: SearchEngineType, 
-    version: string 
-  }> {
-    try {
-      // Create a temporary Elasticsearch adapter to query the endpoint
-      const tempAdapter = new ElasticsearchAdapter({ baseURL });
-      const info = await tempAdapter.callEsRequest('GET', '/');
-      
-      // Check if it's OpenSearch
-      if (info.version?.distribution === 'opensearch') {
-        return {
-          type: SearchEngineType.OPENSEARCH,
-          version: info.version.number
-        };
-      }
-      
-      // Otherwise, assume it's Elasticsearch
-      return {
-        type: SearchEngineType.ELASTICSEARCH,
-        version: info.version?.number || 'unknown'
-      };
-    } catch (error) {
-      logger.error('Failed to detect search engine type', { error });
-      // Default to Elasticsearch if detection fails
-      return {
-        type: SearchEngineType.ELASTICSEARCH,
-        version: 'unknown'
-      };
+  static clearCache(): void {
+    this.instances.clear();
+  }
+  
+  /**
+   * Check if a backend supports a specific feature
+   */
+  static async checkFeatureSupport(
+    config: AdapterConfig, 
+    feature: keyof ReturnType<BaseSearchAdapter['getCapabilities']>
+  ): Promise<boolean> {
+    const adapter = await this.getInstance(config);
+    const capabilities = adapter.getCapabilities();
+    
+    if (feature === 'ml' || feature === 'search' || feature === 'aggregations') {
+      return Object.values(capabilities[feature]).some(v => v === true);
     }
+    
+    return false;
+  }
+  
+  /**
+   * Get detailed capability information
+   */
+  static async getCapabilities(config: AdapterConfig): Promise<ReturnType<BaseSearchAdapter['getCapabilities']>> {
+    const adapter = await this.getInstance(config);
+    return adapter.getCapabilities();
   }
 }

@@ -7,7 +7,7 @@ import { logger } from '../../../../utils/logger.js';
 import { performKMeansClustering } from './algorithm.js';
 import { AttributeValueWithEmbedding, ClusterResult } from './types.js';
 import { createFallbackClusteringResult } from './fallback.js';
-import { TracesAdapterCore } from '../traceCore.js';
+import { TracesAdapterCore } from '../core/adapter.js';
 
 /**
  * Perform clustering with error handling

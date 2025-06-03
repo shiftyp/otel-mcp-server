@@ -1,4 +1,4 @@
-import { ElasticsearchAdapter } from '../elasticsearch/index.js';
+import { BaseSearchAdapter } from '../base/searchAdapter.js';
 import { logger } from '../../utils/logger.js';
 
 /**
@@ -17,12 +17,12 @@ export interface FieldInfo {
  * Get field mappings for a specific index pattern
  */
 export async function getFieldMappings(
-  esClient: ElasticsearchAdapter,
+  searchAdapter: BaseSearchAdapter,
   indexPattern: string
 ): Promise<Record<string, { type: string; path: string; schema: any }>> {
   try {
     logger.info('[FieldSchemas] Getting field mappings', { indexPattern });
-    const response = await esClient.callEsRequest('GET', `/${indexPattern}/_mapping`);
+    const response = await searchAdapter.callApi('GET', `/${indexPattern}/_mapping`);
     
     // Process the mapping response to extract field information
     const fields: Record<string, { type: string; path: string; schema: any }> = {};
@@ -95,139 +95,3 @@ function processProperties(
   }
 }
 
-/**
- * Get field statistics and co-occurring fields
- */
-export async function getFieldStats(
-  esClient: ElasticsearchAdapter,
-  indexPattern: string,
-  search?: string,
-  serviceOrServices?: string | string[]
-): Promise<FieldInfo[]> {
-  try {
-    // First get the field mappings
-    const fieldMappings = await getFieldMappings(esClient, indexPattern);
-    
-    // Filter fields by search term if provided
-    let filteredFields = Object.entries(fieldMappings);
-    if (search && search.trim() !== '') {
-      const searchTerm = search.toLowerCase();
-      filteredFields = filteredFields.filter(([fieldName]) => 
-        fieldName.toLowerCase().includes(searchTerm)
-      );
-    }
-    
-    // Get field statistics and co-occurring fields
-    const fieldStats: FieldInfo[] = [];
-    
-    for (const [fieldName, fieldInfo] of filteredFields) {
-      // Build query to find documents containing the field
-      const query: any = {
-        bool: {
-          must: [
-            {
-              exists: {
-                field: fieldName
-              }
-            }
-          ]
-        }
-      };
-      
-      // Add service filter if provided
-      if (serviceOrServices) {
-        // Convert to array if string
-        const services = Array.isArray(serviceOrServices) ? serviceOrServices : [serviceOrServices];
-        
-        // Build service filter query with exact term matching
-        const serviceTerms = services.map(service => ({
-          term: { 'resource.attributes.service.name': service }
-        }));
-        
-        // Add to main query
-        query.bool.must.push({
-          bool: {
-            should: serviceTerms,
-            minimum_should_match: 1
-          }
-        });
-      }
-      
-      // Get document count for this field
-      const countResponse = await esClient.callEsRequest('POST', `/${indexPattern}/_search`, {
-        size: 0,
-        query
-      });
-      
-      const count = countResponse.hits?.total?.value || 0;
-      
-      // Get co-occurring fields (fields that appear in the same documents)
-      const coOccurringFields: string[] = [];
-      
-      if (count > 0) {
-        // Sample a few documents with this field to find co-occurring fields
-        // Use the same query with service filter that we used for counting
-        const sampleResponse = await esClient.callEsRequest('POST', `/${indexPattern}/_search`, {
-          size: 5,
-          query
-        });
-        
-        // Extract all fields from the sample documents
-        const sampleDocs = sampleResponse.hits?.hits || [];
-        for (const doc of sampleDocs) {
-          const docFields = extractFieldPaths(doc._source);
-          for (const docField of docFields) {
-            if (docField !== fieldName && !coOccurringFields.includes(docField)) {
-              coOccurringFields.push(docField);
-            }
-          }
-        }
-      }
-      
-      fieldStats.push({
-        name: fieldName,
-        type: fieldInfo.type,
-        path: fieldInfo.path,
-        count,
-        schema: fieldInfo.schema,
-        coOccurringFields: coOccurringFields.sort()
-      });
-    }
-    
-    // Sort by field name
-    fieldStats.sort((a, b) => a.name.localeCompare(b.name));
-    
-    logger.info('[FieldSchemas] Field stats retrieved', { 
-      indexPattern, 
-      fieldCount: fieldStats.length 
-    });
-    
-    return fieldStats;
-  } catch (error) {
-    logger.error('[FieldSchemas] Error getting field stats', { 
-      indexPattern, 
-      error: error instanceof Error ? error.message : String(error) 
-    });
-    return [];
-  }
-}
-
-/**
- * Extract all field paths from a document
- */
-function extractFieldPaths(obj: any, path: string = '', result: string[] = []): string[] {
-  if (!obj || typeof obj !== 'object') {
-    return result;
-  }
-  
-  for (const [key, value] of Object.entries(obj)) {
-    const currentPath = path ? `${path}.${key}` : key;
-    result.push(currentPath);
-    
-    if (value && typeof value === 'object' && !Array.isArray(value)) {
-      extractFieldPaths(value, currentPath, result);
-    }
-  }
-  
-  return result;
-}

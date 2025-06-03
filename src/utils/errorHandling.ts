@@ -6,7 +6,7 @@ import { logger } from './logger.js';
 export interface ErrorResponse {
   error: boolean;
   message: string;
-  details?: any;
+  details?: Record<string, unknown>;
   code?: string;
   status?: number;
 }
@@ -21,7 +21,7 @@ export interface ErrorResponse {
  */
 export function createErrorResponse(
   message: string,
-  details?: any,
+  details?: Record<string, unknown>,
   code?: string,
   status?: number
 ): ErrorResponse {
@@ -40,7 +40,7 @@ export function createErrorResponse(
  * @param context Additional context for the error
  * @returns Standardized error response
  */
-export function handleError(error: any, context?: string): ErrorResponse {
+export function handleError(error: unknown, context?: string): ErrorResponse {
   const errorMessage = error instanceof Error ? error.message : String(error);
   const contextPrefix = context ? `[${context}] ` : '';
   const fullMessage = `${contextPrefix}${errorMessage}`;
@@ -51,11 +51,12 @@ export function handleError(error: any, context?: string): ErrorResponse {
     logger.debug(error.stack);
   }
   
+  const errorObj = error as any; // Type assertion for code and status properties
   return createErrorResponse(
     fullMessage,
     error instanceof Error ? { stack: error.stack } : undefined,
-    error.code,
-    error.status
+    errorObj?.code,
+    errorObj?.status
   );
 }
 
@@ -64,8 +65,11 @@ export function handleError(error: any, context?: string): ErrorResponse {
  * @param response Any response object
  * @returns True if the response is an error response
  */
-export function isErrorResponse(response: any): response is ErrorResponse {
-  return response && typeof response === 'object' && response.error === true;
+export function isErrorResponse(response: unknown): response is ErrorResponse {
+  return response !== null && 
+         typeof response === 'object' && 
+         'error' in response &&
+         (response as ErrorResponse).error === true;
 }
 
 /**
@@ -74,7 +78,7 @@ export function isErrorResponse(response: any): response is ErrorResponse {
  * @param context Context for error logging
  * @returns Wrapped function that returns a standardized response
  */
-export function withErrorHandling<T, Args extends any[]>(
+export function withErrorHandling<T, Args extends unknown[]>(
   fn: (...args: Args) => Promise<T>,
   context?: string
 ): (...args: Args) => Promise<T | ErrorResponse> {

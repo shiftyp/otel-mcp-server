@@ -4,7 +4,7 @@
  */
 
 import { logger } from '../../../../utils/logger.js';
-import { TracesAdapterCore } from '../traceCore.js';
+import { TracesAdapterCore } from '../core/adapter.js';
 import { AttributeValueWithEmbedding, TraceClusteringResult } from './types.js';
 import { createFallbackClusteringResult } from './fallback.js';
 

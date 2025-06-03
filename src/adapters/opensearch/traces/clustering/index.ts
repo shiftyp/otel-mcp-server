@@ -5,7 +5,7 @@
  */
 
 import { logger } from '../../../../utils/logger.js';
-import { TracesAdapterCore } from '../traceCore.js';
+import { TracesAdapterCore } from '../core/adapter.js';
 import { SearchEngineType } from '../../../base/searchAdapter.js';
 import { createSamplingAggregation, SamplingOptions } from '../../ml/sampling.js';
 import { buildTraceFilters, getValueByPath } from './utils.js';
@@ -36,32 +36,16 @@ export class TraceAttributeClustering {
     endTime: string,
     options: TraceClusteringWithSamplingOptions = {}
   ): Promise<TraceClusteringResult> {
-    // Determine the search engine type
-    const engineType = await client.getEngineType();
-    
-    // Use the appropriate implementation based on the engine type
-    if (engineType === SearchEngineType.ELASTICSEARCH) {
-      logger.info('[TraceAttributeClustering] Using Elasticsearch implementation');
-      // For Elasticsearch, we'll use the OpenSearch implementation as a fallback
-      return this.clusterAttributesWithOpenSearch(
-        client,
-        attributeKey,
-        startTime,
-        endTime,
-        options
-      );
-    } else {
-      logger.info('[TraceAttributeClustering] Using OpenSearch implementation');
-      return this.clusterAttributesWithOpenSearch(
-        client,
-        attributeKey,
-        startTime,
-        endTime,
-        options
-      );
-    }
+    logger.info('[TraceAttributeClustering] Using OpenSearch implementation');
+    return this.clusterAttributesWithOpenSearch(
+      client,
+      attributeKey,
+      startTime,
+      endTime,
+      options
+    );
   }
-  
+
   /**
    * Cluster trace attributes using OpenSearch's ML capabilities
    */
@@ -87,7 +71,7 @@ export class TraceAttributeClustering {
       return rest;
     });
   }
-  
+
   private static async clusterAttributesWithOpenSearch(
     client: TracesAdapterCore,
     attributeKey: string | undefined,
@@ -111,11 +95,11 @@ export class TraceAttributeClustering {
 
       // Always use text content extraction
       const useTextContentExtraction = true;
-      
+
       // Use the logs-generic-default index where trace data is stored
       // We know this index contains trace data based on our findLogs query
       const indexPattern = 'logs-generic-default';
-      
+
       // Log the configuration for debugging
       logger.info('[TraceAttributeClustering] Configuration', {
         indexPattern,
@@ -126,9 +110,9 @@ export class TraceAttributeClustering {
         maxSamples,
         textFields
       }); // Use the logs index where trace data is available
-      
+
       // Add debug logging
-      logger.debug('[TraceAttributeClustering] Starting clustering with index pattern', { 
+      logger.debug('[TraceAttributeClustering] Starting clustering with index pattern', {
         indexPattern,
         useTextContent,
         attributeKey,
@@ -136,7 +120,7 @@ export class TraceAttributeClustering {
         endTime,
         options
       });
-      
+
       // Try to get a sample document to understand structure
       try {
         const sampleQuery = {
@@ -145,15 +129,12 @@ export class TraceAttributeClustering {
             match_all: {}
           }
         };
-        
-        const sampleResult = await client.search({
-          index: indexPattern,
-          body: sampleQuery
-        });
-        
+
+        const sampleResult = await client.request("GET", `/${indexPattern}/_search`, sampleQuery);
+
         if (sampleResult?.hits?.hits?.length > 0) {
           const sampleDoc = sampleResult.hits.hits[0]._source;
-          logger.debug('[TraceAttributeClustering] Sample document structure', { 
+          logger.debug('[TraceAttributeClustering] Sample document structure', {
             sampleDoc,
             docKeys: Object.keys(sampleDoc || {})
           });
@@ -161,11 +142,11 @@ export class TraceAttributeClustering {
           logger.debug('[TraceAttributeClustering] No sample documents found');
         }
       } catch (error) {
-        logger.warn('[TraceAttributeClustering] Error getting sample document', { 
-          error: error instanceof Error ? error.message : String(error) 
+        logger.warn('[TraceAttributeClustering] Error getting sample document', {
+          error: error instanceof Error ? error.message : String(error)
         });
       }
-      
+
       // Log the retrieval approach
       logger.info('[TraceAttributeClustering] Using memory-efficient streaming approach for trace clustering', {
         attributeKey,
@@ -176,38 +157,38 @@ export class TraceAttributeClustering {
         maxSamples,
         excludeVectors
       });
-      
+
       // Import required utilities
       const { extractTextContent } = await import('../../ml/textExtraction.js');
       const { streamDocuments } = await import('./streamingUtils.js');
       const { performStreamingClusteringWithErrorHandling } = await import('./streamingClustering.js');
       const { generateAttributeEmbeddingsStreaming } = await import('./embeddings.js');
-      
+
       // Function to clean and format trace data for better clustering
       const cleanTraceTextContent = (source: any, traceId: string): string => {
         // Initialize array to store meaningful text parts
         const textParts: string[] = [];
-        
+
         // Extract trace ID
         if (source.trace?.id) {
           textParts.push(`trace:${source.trace.id}`);
         }
-        
+
         // Extract span ID if available
         if (source.span?.id) {
           textParts.push(`span:${source.span.id}`);
         }
-        
+
         // Extract URL path if available (common in our logs)
         if (source.url?.path) {
           textParts.push(`path:${source.url.path}`);
         }
-        
+
         // Extract service name if available
         if (source.service?.name) {
           textParts.push(`service:${source.service.name}`);
         }
-        
+
         // Extract the message field which often contains HTTP info
         if (source.message) {
           // Extract HTTP method, path, and status code from message if possible
@@ -222,48 +203,48 @@ export class TraceAttributeClustering {
             textParts.push(source.message);
           }
         }
-        
+
         // Extract HTTP method and target if available (common in traces)
         if (source.http) {
           const httpObj = source.http;
           const method = httpObj.method || httpObj.Method || '';
           const target = httpObj.target || httpObj.url || httpObj.path || '';
           const statusCode = httpObj.status_code || httpObj.statusCode || '';
-          
+
           if (method) textParts.push(`method:${method}`);
           if (target) textParts.push(`endpoint:${target}`);
           if (statusCode) textParts.push(`status:${statusCode}`);
         }
-        
+
         // Extract service information
         if (source.service) {
           const serviceObj = source.service;
           const serviceName = serviceObj.name || serviceObj.Name || '';
           if (serviceName) textParts.push(`service:${serviceName}`);
         }
-        
+
         // Extract error information if present
         if (source.error || source.exception) {
           const errorObj = source.error || source.exception;
           const errorMsg = errorObj.message || errorObj.Message || 'error';
           textParts.push(`error:${errorMsg}`);
         }
-        
+
         // Extract key attributes and recursively break down objects into strings
         if (source.attributes || source.Attributes) {
           const attrs = source.attributes || source.Attributes;
-          
+
           // Recursive function to process nested objects
           const processAttributeValue = (prefix: string, value: any) => {
             if (value === null || value === undefined) {
               return;
             }
-            
+
             // Skip trace/span IDs
             if (prefix.toLowerCase().includes('id')) {
               return;
             }
-            
+
             if (typeof value === 'object' && !Array.isArray(value)) {
               // Process nested object by recursively calling with prefixed keys
               Object.entries(value).forEach(([nestedKey, nestedValue]) => {
@@ -283,17 +264,17 @@ export class TraceAttributeClustering {
               textParts.push(`${prefix}:${value}`);
             }
           };
-          
+
           // Process each attribute
           Object.entries(attrs).forEach(([key, value]) => {
             processAttributeValue(key, value);
           });
         }
-        
+
         // Return the cleaned text content
         return textParts.join(' ');
       };
-      
+
       // Build filters for the search query
       const filters = buildTraceFilters(
         startTime,
@@ -303,7 +284,7 @@ export class TraceAttributeClustering {
         options.queryString,
         true // useTextContent
       );
-      
+
       // Build the search query to retrieve documents directly
       const pageSize = 1000; // Number of documents to retrieve per page
       const searchQuery = {
@@ -321,18 +302,18 @@ export class TraceAttributeClustering {
           { "@timestamp": { order: "desc" } } // Sort by timestamp for consistent paging
         ]
       };
-      
+
       // Log the full query for debugging
       logger.info('[TraceAttributeClustering] Using search query', {
         query: JSON.stringify(searchQuery)
       });
-      
+
       // Calculate sampling rate from percentage
       const samplingRate = samplingPercent / 100;
-      
+
       // Set a maximum number of documents to process
       const maxDocsToProcess = 10000;
-      
+
       // Create streaming document options
       const streamingOptions = {
         indexPattern,
@@ -345,33 +326,33 @@ export class TraceAttributeClustering {
         textExtractor: cleanTraceTextContent,
         attributeExtractor: getValueByPath
       };
-      
+
       // Create a streaming document generator
       const documentStream = streamDocuments(client, streamingOptions);
-      
+
       // Create a streaming embedding generator
       const embeddingStream = generateAttributeEmbeddingsStreaming(
         documentStream,
         embeddingBatchSize,
         options.embeddingProviderConfig
       );
-      
+
       // Track total values for reporting
       let totalValues = 0;
       let validValues = 0;
-      
+
       // Collect all attribute values with embeddings
       const allAttributeValues: AttributeValueWithEmbedding[] = [];
-      
+
       // Process the embedding stream and collect values
       logger.info('[TraceAttributeClustering] Starting to process embedding stream');
-      
+
       try {
         for await (const batch of embeddingStream) {
           logger.info('[TraceAttributeClustering] Received batch of attribute values with embeddings', {
             batchSize: batch.length
           });
-          
+
           totalValues += batch.length;
           validValues += batch.length;
           allAttributeValues.push(...batch);
@@ -381,20 +362,20 @@ export class TraceAttributeClustering {
           error: error instanceof Error ? error.message : String(error)
         });
       }
-      
+
       logger.info('[TraceAttributeClustering] Finished processing embedding stream', {
         totalValues,
         validValues,
         collectedValues: allAttributeValues.length
       });
-      
+
       // Create a stream from the collected values
       const countingStream = async function* () {
         if (allAttributeValues.length > 0) {
           yield allAttributeValues;
         }
       }();
-      
+
       // If we have no attribute values, return an empty result
       if (totalValues === 0 || allAttributeValues.length === 0) {
         logger.warn('[TraceAttributeClustering] No attribute values found for clustering');
@@ -413,7 +394,7 @@ export class TraceAttributeClustering {
           message: 'No attribute values found'
         };
       }
-      
+
       // Perform streaming clustering with error handling
       const clusteringResult = await performStreamingClusteringWithErrorHandling(
         client,
@@ -426,7 +407,7 @@ export class TraceAttributeClustering {
         enableSampling,
         samplingPercent
       );
-      
+
       // If clustering failed, return a fallback result
       if (!clusteringResult) {
         logger.warn('[TraceAttributeClustering] Streaming clustering failed');
@@ -445,10 +426,10 @@ export class TraceAttributeClustering {
           message: 'Clustering failed'
         };
       }
-      
+
       // Process the clustering result
       const { clusters, outliers } = clusteringResult;
-      
+
       // Convert the clusters format to match the expected return type
       const formattedClusters: ClusterResult[] = Object.entries(clusters).map(([label, values], index) => ({
         id: index,
@@ -457,7 +438,7 @@ export class TraceAttributeClustering {
         commonTerms: [],  // We'll leave this empty for now
         isOutlier: false
       }));
-      
+
       // Return the clustering result
       return {
         attributeKey: attributeKey || 'text_content',
@@ -478,7 +459,7 @@ export class TraceAttributeClustering {
         stack: error instanceof Error ? error.stack : undefined,
         attributeKey
       });
-      
+
       // Return a fallback result with error information
       return createFallbackClusteringResult({
         attributeKey: attributeKey || 'text_content',

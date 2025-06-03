@@ -80,7 +80,7 @@ export class MetricsSearchAdapter extends MetricsAdapterCore {
           const properties = index.mappings?.properties || {};
           
           // Process each field in the index
-          this.extractFields(properties, '', fields);
+          this.extractMetricFields(properties, '', fields);
         }
       }
       

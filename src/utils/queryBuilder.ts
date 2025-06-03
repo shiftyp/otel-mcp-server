@@ -1,4 +1,5 @@
 import { TimeRange } from './timeRangeParser.js';
+import { QueryDSL, Sort, BoolQuery as ElasticBoolQuery } from '../types/elasticsearch.js';
 
 /**
  * Common query types used across the codebase
@@ -18,30 +19,21 @@ export enum QueryType {
 /**
  * Base interface for all Elasticsearch queries
  */
-export interface BaseQuery {
-  [key: string]: any;
-}
+export type BaseQuery = QueryDSL;
 
 /**
  * Interface for Elasticsearch bool query
  */
-export interface BoolQuery extends BaseQuery {
-  bool: {
-    must?: BaseQuery[];
-    must_not?: BaseQuery[];
-    should?: BaseQuery[];
-    filter?: BaseQuery[];
-    minimum_should_match?: number;
-  };
-}
+export type BoolQuery = ElasticBoolQuery;
 
 /**
  * Interface for Elasticsearch query with size and from parameters
  */
-export interface PaginatedQuery extends BaseQuery {
+export interface PaginatedQuery {
+  query?: QueryDSL;
   size?: number;
   from?: number;
-  sort?: any[];
+  sort?: Sort;
   _source?: string[] | boolean;
   track_total_hits?: boolean | number;
 }
@@ -274,10 +266,10 @@ export function createPaginatedQuery(
   baseQuery: BaseQuery,
   size?: number,
   from?: number,
-  sort?: any[],
+  sort?: Sort,
   source?: string[] | boolean
 ): PaginatedQuery {
-  const query: PaginatedQuery = { ...baseQuery };
+  const query: PaginatedQuery = { query: baseQuery };
   
   if (size !== undefined) {
     query.size = size;

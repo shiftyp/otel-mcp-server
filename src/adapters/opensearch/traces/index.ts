@@ -1,8 +1,9 @@
 import { OpenSearchCore } from '../core/core.js';
 import { logger } from '../../../utils/logger.js';
-import { DependencyEvolutionAnalysis } from './dependencyEvolution.js';
-import { TraceAttributeAnalysis } from './traceAttributeAnalysis.js';
-import { TracesAdapterCore } from './traceCore.js';
+import { DependencyEvolutionAnalysis } from './analysis/dependencyEvolution.js';
+import { TraceAttributeAnalysis } from './analysis/traceAttributeAnalysis.js';
+import { TracesAdapterCore } from './core/adapter.js';
+import { ConfigLoader } from '../../../config/index.js';
 // We'll import the TraceAttributeClustering dynamically to avoid circular dependencies
 
 /**
@@ -432,7 +433,7 @@ export class TracesAdapter extends OpenSearchCore {
    * List available log fields (required by OpenSearchCore)
    * @param includeSourceDoc Whether to include source document fields
    */
-  public async listLogFields(includeSourceDoc?: boolean): Promise<any[]> {
+  public async listLogFields(prefix?: string): Promise<string[]> {
     logger.info('[OpenSearch TracesAdapter] listLogFields called but not implemented in this adapter');
     throw new Error('listLogFields not implemented in TracesAdapter');
   }
@@ -614,9 +615,11 @@ export class TracesAdapter extends OpenSearchCore {
           query.query.bool.filter = [];
         }
         
-        const rangeFilter: any = { range: { '@timestamp': {} } };
-        if (startTime) rangeFilter.range['@timestamp'].gte = startTime;
-        if (endTime) rangeFilter.range['@timestamp'].lte = endTime;
+        const config = ConfigLoader.get();
+        const timestampField = config.telemetry.fields.timestamp;
+        const rangeFilter: any = { range: { [timestampField]: {} } };
+        if (startTime) rangeFilter.range[timestampField].gte = startTime;
+        if (endTime) rangeFilter.range[timestampField].lte = endTime;
         
         query.query.bool.filter.push(rangeFilter);
       }

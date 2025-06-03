@@ -35,7 +35,7 @@ export interface EmbeddingOptions {
     /** Source of the embedding request (e.g., 'trace_clustering', 'log_search') */
     source: string;
     /** Additional metadata for logging */
-    [key: string]: any;
+    [key: string]: string | number | boolean;
   };
 }
 
@@ -64,7 +64,7 @@ export interface EmbeddingError {
   /** Model ID used for embedding generation */
   modelId: string;
   /** Additional error details */
-  details?: Record<string, any>;
+  details?: Record<string, unknown>;
 }
 
 /**

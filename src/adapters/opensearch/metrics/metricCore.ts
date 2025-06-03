@@ -1,112 +1,169 @@
-import { OpenSearchCore } from '../core/core.js';
+import { OpenSearchSubAdapter } from '../core/baseAdapter.js';
 import { logger } from '../../../utils/logger.js';
 
-// Types for ML operations
-export interface TimeSeriesPoint {
-  timestamp: string;
-  value: number;
-}
-
+/**
+ * Interface for histogram bucket
+ */
 export interface HistogramBucket {
   key: number;
   doc_count: number;
+  [key: string]: any; // For aggregation results
 }
 
-export interface HistogramMetric {
+/**
+ * Interface for date histogram bucket
+ */
+export interface DateHistogramBucket {
+  key_as_string: string;
+  key: number;
+  doc_count: number;
+  [key: string]: any; // For aggregation results
+}
+
+/**
+ * Interface for time series data point
+ */
+export interface TimeSeriesPoint {
   timestamp: string;
-  buckets: HistogramBucket[];
+  value: number;
+  [key: string]: any;
+}
+
+/**
+ * Interface for histogram metric
+ */
+export interface HistogramMetric {
+  name: string;
+  values: number[];
+  counts: number[];
+  min: number;
+  max: number;
+  sum: number;
+  count: number;
+  mean: number;
+  stddev?: number;
 }
 
 /**
  * OpenSearch Metrics Adapter Core
- * Provides base functionality for working with OpenTelemetry metrics data in OpenSearch
+ * Provides base functionality for working with metrics data in OpenSearch
  */
-export class MetricsAdapterCore extends OpenSearchCore {
+export class MetricsAdapterCore extends OpenSearchSubAdapter {
+  protected metricsIndex: string;
+  
   constructor(options: any) {
     super(options);
+    this.metricsIndex = options.metricsIndex || 'metrics-*';
   }
 
   /**
-   * Make a request to OpenSearch
+   * Query metrics index
    */
-  public async request(method: string, url: string, body: any) {
-    return this.callRequest(method, url, body);
+  public async searchMetrics(query: any): Promise<any> {
+    return this.request('POST', `/${this.metricsIndex}/_search`, query);
   }
   
   /**
-   * Recursively extract fields from mapping properties
+   * Get metric fields from mapping
    */
-  protected extractFields(properties: any, prefix: string, fields: any[]): void {
-    for (const fieldName in properties) {
-      if (Object.prototype.hasOwnProperty.call(properties, fieldName)) {
-        const field = properties[fieldName];
-        const fullName = prefix ? `${prefix}.${fieldName}` : fieldName;
-        
-        // Add the field to the list
+  public async getMetricFields(): Promise<any[]> {
+    const response = await this.request('GET', `/${this.metricsIndex}/_mapping`);
+    
+    const fields: any[] = [];
+    for (const index in response) {
+      const mappings = response[index].mappings;
+      if (mappings && mappings.properties) {
+        this.extractMetricFields(mappings.properties, '', fields);
+      }
+    }
+    
+    return fields;
+  }
+  
+  /**
+   * Helper to extract metric field information from mapping
+   */
+  protected extractMetricFields(properties: any, path: string, fields: any[]): void {
+    for (const field in properties) {
+      const fullPath = path ? `${path}.${field}` : field;
+      const fieldInfo = properties[field];
+      
+      // Check if this is a metric field (numeric types)
+      if (['long', 'integer', 'short', 'byte', 'double', 'float', 'half_float', 'scaled_float'].includes(fieldInfo.type)) {
         fields.push({
-          name: fullName,
-          type: field.type || 'object',
-          description: field.description || '',
-          isMetric: this.isMetricField(fullName, field)
+          field: fullPath,
+          type: fieldInfo.type,
+          metricType: this.inferMetricType(fullPath),
+          unit: this.inferUnit(fullPath),
+          aggregatable: true
         });
-        
-        // Recursively process nested properties
-        if (field.properties) {
-          this.extractFields(field.properties, fullName, fields);
-        }
+      }
+      
+      // Process nested fields
+      if (fieldInfo.properties) {
+        this.extractMetricFields(fieldInfo.properties, fullPath, fields);
       }
     }
   }
   
   /**
-   * Determine if a field is a metric field based on naming conventions
+   * Infer metric type from field name
    */
-  protected isMetricField(name: string, field: any): boolean {
-    // Check if the field is a numeric type
-    const numericTypes = ['long', 'integer', 'short', 'byte', 'double', 'float', 'half_float', 'scaled_float'];
-    const isNumeric = numericTypes.includes(field.type);
-    
-    // Check if the field name contains common metric indicators
-    const metricIndicators = ['count', 'sum', 'min', 'max', 'avg', 'value', 'gauge', 'counter', 'histogram'];
-    const hasMetricIndicator = metricIndicators.some(indicator => name.toLowerCase().includes(indicator));
-    
-    // Check if the field is in a metrics-specific path
-    const metricPaths = ['metrics.', 'value.', 'sum.', 'gauge.', 'counter.'];
-    const isInMetricPath = metricPaths.some(path => name.includes(path));
-    
-    return isNumeric && (hasMetricIndicator || isInMetricPath);
+  protected inferMetricType(fieldName: string): string {
+    if (fieldName.includes('counter') || fieldName.includes('count')) {
+      return 'counter';
+    } else if (fieldName.includes('gauge')) {
+      return 'gauge';
+    } else if (fieldName.includes('histogram') || fieldName.includes('distribution')) {
+      return 'histogram';
+    } else if (fieldName.includes('summary')) {
+      return 'summary';
+    }
+    return 'gauge'; // Default to gauge
   }
   
   /**
-   * Create sliding windows from time series data for ML processing
+   * Infer unit from field name
    */
-  protected createSlidingWindows(timeSeriesData: TimeSeriesPoint[], windowSize: number): number[][] {
-    const windows: number[][] = [];
-    
-    for (let i = 0; i <= timeSeriesData.length - windowSize; i++) {
-      const window = timeSeriesData.slice(i, i + windowSize).map((point: TimeSeriesPoint) => point.value);
-      windows.push(window);
-    }
-    
-    return windows;
+  protected inferUnit(fieldName: string): string {
+    if (fieldName.includes('bytes')) return 'bytes';
+    if (fieldName.includes('seconds') || fieldName.includes('duration')) return 'seconds';
+    if (fieldName.includes('milliseconds') || fieldName.includes('_ms')) return 'milliseconds';
+    if (fieldName.includes('percent') || fieldName.includes('ratio')) return 'percent';
+    if (fieldName.includes('count')) return 'count';
+    return '';
   }
   
   /**
-   * Parse interval string to milliseconds
+   * Helper to build metric aggregations
    */
-  protected parseInterval(interval: string): number {
-    const match = interval.match(/^(\d+)([smhd])$/);
-    if (!match) return 60000; // Default to 1 minute
-    
-    const value = parseInt(match[1]);
-    const unit = match[2];
-    
-    switch (unit) {
-      case 's': return value * 1000;
-      case 'm': return value * 60000;
-      case 'h': return value * 3600000;
-      case 'd': return value * 86400000;
-      default: return 60000;
+  public buildMetricAggregation(metricField: string, aggregationType: string = 'avg'): any {
+    const validAggregations = ['avg', 'sum', 'min', 'max', 'cardinality', 'value_count'];
+    if (!validAggregations.includes(aggregationType)) {
+      aggregationType = 'avg';
     }
+    
+    return {
+      [aggregationType]: {
+        field: metricField
+      }
+    };
+  }
+  
+  /**
+   * Helper to build date histogram aggregation
+   */
+  public buildDateHistogram(interval: string = '1m', field: string = '@timestamp'): any {
+    return {
+      date_histogram: {
+        field: field,
+        interval: interval,
+        min_doc_count: 0,
+        extended_bounds: {
+          min: 'now-1h',
+          max: 'now'
+        }
+      }
+    };
   }
 }

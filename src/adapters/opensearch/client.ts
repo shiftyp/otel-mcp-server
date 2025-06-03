@@ -28,11 +28,3 @@ export function getOpenSearchClient(options?: ClientOptions): Client {
   return clientInstance;
 }
 
-/**
- * Reset the OpenSearch client instance
- * Useful for testing or when configuration changes
- */
-export function resetOpenSearchClient(): void {
-  clientInstance = null;
-  logger.info('[OpenSearchClient] Reset OpenSearch client instance');
-}

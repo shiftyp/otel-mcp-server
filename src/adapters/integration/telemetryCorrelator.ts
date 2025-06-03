@@ -1,4 +1,3 @@
-import { ElasticsearchAdapter } from '../elasticsearch/index.js';
 import { OpenSearchAdapter } from '../opensearch/index.js';
 import { SearchAdapterInterface } from './adapterInterfaces.js';
 import { TimeRange, parseTimeRange } from '../../utils/timeRangeParser.js';
