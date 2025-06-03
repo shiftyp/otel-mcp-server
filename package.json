@@ -2,7 +2,7 @@
   "name": "otel-mcp-server",
   "version": "0.3.0",
   "main": "dist/server.js",
-  "bin": {  
+  "bin": {
     "otel-mcp-server": "./bin/otel-mcp-server"
   },
   "scripts": {
@@ -22,11 +22,13 @@
   "dependencies": {
     "@elastic/elasticsearch": "^9.0.2",
     "@modelcontextprotocol/sdk": "^1.11.5",
+    "@opensearch-project/opensearch": "^3.5.1",
     "@types/node": "^20.11.30",
     "axios": "^1.7.2",
     "date-fns": "^4.1.0",
     "uuid": "^11.1.0",
-    "ws": "^8.17.0"
+    "ws": "^8.17.0",
+    "zod": "^3.25.48"
   },
   "devDependencies": {
     "@types/uuid": "^10.0.0",

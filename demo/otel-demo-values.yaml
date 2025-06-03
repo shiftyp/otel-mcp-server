@@ -14,19 +14,18 @@ opentelemetry-collector:
     exporters:
       debug: {}
       elasticsearch:
-        endpoint: http://elasticsearch-master:9200
+        endpoint: http://opensearch:9200
         timeout: 90s
         num_workers: 4
         mapping:
-          mode: otel
+          mode: ecs
         headers:
-          X-Elastic-Mapping-Mode: otel
+          X-Elastic-Mapping-Mode: ecs
       opensearch:
         http:
           endpoint: http://opensearch:9200
           tls:
             insecure: true
-        logs_index: otel
       otlp:
         endpoint: jaeger-collector:4317
         tls:

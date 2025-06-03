@@ -1,1128 +1,317 @@
-# OTEL MCP Server
+# AI-Powered OpenTelemetry Analysis
 
-## 🚀 Supercharge Your Observability with AI-Powered Insights
+## 🚀 Transform Your Observability Data into Actionable Intelligence
 
-OTEL MCP Server is an open-source bridge that connects AI systems directly to your OpenTelemetry data in Elasticsearch. While OpenTelemetry has solved the data collection problem with vendor-neutral instrumentation, traditional observability still requires humans to manually navigate dashboards and query interfaces.
+**Stop drowning in dashboards. Start having conversations with your telemetry data.**
 
-This server implements the Model Context Protocol (MCP) to enable AI assistants to query and analyze your traces, metrics, and logs in real-time, transforming how you interact with observability data:
+Modern applications generate massive amounts of observability data through OpenTelemetry - traces, metrics, and logs that contain the answers to every operational question. But finding those answers requires navigating complex query languages, building custom dashboards, and manually correlating signals across different data types.
 
-- **Investigate Incidents Autonomously**: AI can query traces during outages, find error patterns, and correlate issues across your entire application landscape
-- **Provide Context-Aware Assistance**: When reviewing code, AI can simultaneously analyze related production telemetry data
-- **Answer Complex Questions**: "Show me all errors from the authentication flow in the last 24 hours" becomes a simple natural language request
-- **Detect Anomalies On-Demand**: Instead of configuring static thresholds, ask the AI to identify unusual patterns in your data
+What if you could just ask?
 
-As developers, we know that a well-designed system reveals its own inner workings. By connecting OpenTelemetry data to AI, OTEL MCP Server amplifies this natural learning process, making your system's behavior more transparent and accessible.
+This MCP server bridges the gap between AI assistants and your OpenTelemetry data, enabling natural language interactions with your entire observability stack:
 
-## ⚙️ MCP Configuration
+- **"Show me all errors in the payment service from the last hour"** - The AI queries your traces and logs, finding patterns you might have missed
+- **"Why is the checkout service slow?"** - Get instant analysis of latency patterns, bottlenecks, and anomalies
+- **"What changed in my system between 2pm and 3pm yesterday?"** - Compare metrics, identify anomalies, and correlate events across services
+- **"Find the root cause of the authentication failures"** - Let AI trace error propagation through your distributed system
 
-To use OTEL MCP Server with tools like MCP Inspector or Windsurf, use the following configuration (assuming default environment variables and that you run the server with `npx -y otel-mcp-server`):
+## 📡 What is OpenTelemetry?
+
+[OpenTelemetry](https://opentelemetry.io/) (OTEL) is the industry-standard framework for collecting and managing telemetry data from your applications. It provides a vendor-neutral way to instrument, generate, collect, and export telemetry data.
+
+### The Three Pillars of Observability
+
+OpenTelemetry captures three essential types of telemetry data:
+
+**[Traces](https://opentelemetry.io/docs/concepts/signals/traces/)**
+- Track requests as they flow through distributed systems
+- Show the complete journey of a transaction across multiple services
+- Include timing, status, and contextual information for each step
+- Example: Following a user's checkout process from frontend → cart service → payment service → notification service
+
+**[Metrics](https://opentelemetry.io/docs/concepts/signals/metrics/)**
+- Numerical measurements of system behavior over time
+- Include counters, gauges, and histograms
+- Track resource usage, business KPIs, and performance indicators
+- Example: CPU usage, request latency percentiles, items sold per minute
+
+**[Logs](https://opentelemetry.io/docs/concepts/signals/logs/)**
+- Structured records of discrete events
+- Include timestamps, severity levels, and contextual attributes
+- Can be correlated with traces and metrics for full context
+- Example: Error messages, audit trails, debugging information
+
+### Why OpenTelemetry Matters
+
+Traditional monitoring tools often lock you into proprietary formats. OpenTelemetry breaks these silos by:
+
+1. **Vendor Neutrality**: Collect once, send anywhere - works with [Elasticsearch](https://www.elastic.co/guide/en/elasticsearch/reference/current/elasticsearch-intro.html), [OpenSearch](https://opensearch.org/docs/latest/), [Jaeger](https://www.jaegertracing.io/), [Prometheus](https://prometheus.io/), and more
+2. **Unified Collection**: Single instrumentation for all telemetry types
+3. **Automatic Context**: Built-in correlation between traces, metrics, and logs
+4. **Industry Standard**: Backed by the [Cloud Native Computing Foundation](https://www.cncf.io/)
+
+### How This Server Enhances OpenTelemetry
+
+While OpenTelemetry solves data collection, analyzing that data still requires expertise. This MCP server makes your OpenTelemetry data conversational:
+
+- **No Query Language Required**: Ask questions in plain English instead of writing complex queries
+- **Cross-Signal Correlation**: AI automatically correlates traces, metrics, and logs
+- **Pattern Recognition**: Discover anomalies and trends you might miss manually
+- **Contextual Understanding**: AI understands service relationships and dependencies
+
+Learn more:
+- [OpenTelemetry Documentation](https://opentelemetry.io/docs/)
+- [OTEL Collector Configuration](https://opentelemetry.io/docs/collector/configuration/)
+- [Instrumenting Your Application](https://opentelemetry.io/docs/instrumentation/)
+- [OpenTelemetry Demo Application](https://opentelemetry.io/docs/demo/)
+
+## 💡 Why This Matters
+
+Traditional observability tools excel at collecting and storing data, but they still require human expertise to extract insights. By connecting AI directly to your telemetry data, you get:
+
+### Instant Incident Response
+When an outage hits at 3am, you don't have time to craft complex queries. Ask the AI to investigate error patterns, trace failures through your system, and identify the root cause - all in natural language.
+
+### Proactive Problem Detection
+Instead of setting up hundreds of static alerts, let AI continuously analyze your data for anomalies. Ask questions like "Are there any unusual patterns in today's traffic?" and get intelligent analysis based on historical baselines.
+
+### Democratized Observability
+Not everyone on your team is a query expert. With natural language access, developers, SREs, and even product managers can explore system behavior without learning complex query languages.
+
+### Context-Aware Development
+While reviewing code or designing features, developers can instantly check how similar code performs in production, what errors it generates, and how it impacts system performance.
+
+## 🎯 Real-World Use Cases
+
+### During Incidents
+- "Find all traces with errors in the authentication flow"
+- "Show me service dependency failures in the last 30 minutes"
+- "Which services are experiencing elevated latency?"
+
+### Performance Analysis
+- "Identify the slowest operations in the checkout service"
+- "Compare today's CPU usage with last week's baseline"
+- "Find memory leaks in the cart service"
+
+### System Understanding
+- "Map out all service dependencies"
+- "Show me the critical path for order processing"
+- "Which services communicate with the payment gateway?"
+
+### Anomaly Detection
+- "Find unusual log patterns in the last hour"
+- "Detect metric anomalies across all services"
+- "Show me rare error messages that started appearing today"
+
+## 🛠️ How It Works
+
+This server implements the Model Context Protocol (MCP), providing AI assistants with a structured interface to your OpenTelemetry data stored in Elasticsearch/OpenSearch. When you ask a question, the AI:
+
+1. Understands your intent and identifies relevant data types (traces, metrics, or logs)
+2. Constructs appropriate queries using the provided tools
+3. Analyzes the results and presents insights in natural language
+4. Can perform follow-up queries to dive deeper into issues
+
+## ⚡ Quick Start
+
+### For Windsurf/Claude Desktop Users
+
+Add this to your MCP settings:
 
 ```json
 {
-   "servers": {
-      // ...
-      "otel-mcp-server": {
-         "command": "npx",
-         "args": ["-y", "otel-mcp-server"],
-         "env": {
-            "ELASTICSEARCH_URL": "http://localhost:9200",
-            "ELASTICSEARCH_USERNAME": "elastic",
-            "ELASTICSEARCH_PASSWORD": "changeme",
-            "SERVER_NAME": "otel-mcp-server",
-            "LOGLEVEL": "OFF",
-            "LOGFILE": "logs/mcp-requests.log"
-         }
+  "mcpServers": {
+    "otel-mcp-server": {
+      "command": "npx",
+      "args": ["-y", "otel-mcp-server"],
+      "env": {
+      "OPENSEARCH_URL": "http://localhost:9200",
+        "USERNAME": "elastic",
+        "PASSWORD": "changeme",
+        "OPENAI_API_KEY": "sk-..."  // Optional: for ML-powered features
       }
-      // ...
-   }
-}
-```
-
-
-## ✨ Features
-
-- **Direct Query** - Execute custom Elasticsearch queries against traces, metrics, and logs
-- **Service-Aware Tools** - Filter all tools by service or query across multiple services
-- **Field Discovery** - Find available fields for specific services to construct effective queries
-- **Structured Error Handling** - All tools return consistent, structured error responses
-- **Connection Validation** - Automatic validation on startup
-- **Cross-Platform** - Windows, macOS, and Linux
-- **Dual Mapping Mode Support** - Compatible with both OTEL and ECS mapping modes in Elasticsearch
-- **Minimal Abstraction** - Transparent access to data without hiding query complexity
-- **Maximum Flexibility** - Full control over queries for customization
-
-## 🔄 Elasticsearch Mapping Modes
-
-The OTEL MCP Server supports two Elasticsearch mapping modes for OpenTelemetry data:
-
-### OTEL Mapping Mode
-
-The `otel` mapping mode preserves the original OpenTelemetry data structure, keeping attribute names and closely following the OTLP event structure. This mode requires Elasticsearch 8.12+ and uses data streams for optimal time series performance.
-
-**Configuration requirements:**
-- Elasticsearch 8.12+ or 9.0+
-- Data stream index templates for logs, metrics, and traces
-- OpenTelemetry Collector configured with:
-  ```yaml
-  exporters:
-    elasticsearch:
-      mapping:
-        mode: otel
-      headers:
-        X-Elastic-Mapping-Mode: otel
-  ```
-
-### ECS Mapping Mode
-
-The `ecs` mapping mode maps OpenTelemetry fields to the Elastic Common Schema (ECS), making the data more compatible with existing Elastic dashboards and tools.
-
-**Configuration requirements:**
-- Works with all Elasticsearch versions
-- OpenTelemetry Collector configured with:
-  ```yaml
-  exporters:
-    elasticsearch:
-      mapping:
-        mode: ecs
-      headers:
-        X-Elastic-Mapping-Mode: ecs
-  ```
-
-The OTEL MCP Server automatically detects and adapts to both mapping modes, so you can use either format without changing your configuration.
-
-## 🚀 Quick Start
-
-1. **Clone and install dependencies**:
-   ```bash
-   git clone https://github.com/your-username/otel-mcp-server.git
-   cd otel-mcp-server
-   npm install
-   ```
-
-2. **Configure your environment**:
-   ```bash
-   cp .env.example .env
-   # Edit .env with your Elasticsearch details
-   ```
-
-3. **Build the server**:
-   ```bash
-   npm run build
-   ```
-
-4. **Start the server** (stdio MCP transport):
-   ```bash
-   npm start
-   ```
-
-## ⚙️ Usage
-
-This server exposes MCP tools for use with MCP-compatible clients (such as Windsurf or MCP Inspector). All tools return structured responses and include consistent error handling.
-
-### Adaptive Tool Registration
-
-The OTEL MCP Server dynamically registers tools based on available telemetry types in your Elasticsearch instance:
-
-- If traces are available, trace query tools (`tracesQuery`, `traceFieldsGet`) will be registered
-- If metrics are available, metric query tools (`metricsQuery`, `metricsFieldsGet`) will be registered
-- If logs are available, log query tools (`logsQuery`, `logFieldsGet`, `findLogs`) will be registered
-- Common tools like `servicesGet` adapt to use whatever telemetry is available
-
-This means the set of available tools may vary depending on your environment and data availability. The server automatically detects what's available and registers the appropriate tools.
-
-To check which tools are available at runtime, you can use the built-in `listtools` utility:
-
-```javascript
-mcp0_listtools({
-  "search": ""
-})
-```
-
-This will return a list of all registered tools, which will reflect the available telemetry types in your environment.
-
-### 🔧 Available Tools
-
-### Direct Query Tools
-
-- `tracesQuery`: Query trace data using Elasticsearch query syntax
-- `metricsQuery`: Query metric data using Elasticsearch query syntax
-- `logsQuery`: Query log data using Elasticsearch query syntax
-- `servicesGet`: List all detected services (based on trace, metric, or log data)
-- `spanDurationAnomaliesDetect`: Detect spans with unusually high durations (latency outliers) based on statistical thresholds
-- `serviceDependencyInfo`: Analyze service dependency relationships and traffic metrics for all spans in a time window
-- `serviceArchitectureMap`: Generate a tree or graph of service relationships with error rates and traffic statistics. Supports:
-    - Tree structure output (preferred)
-    - Relationship-specific metrics (calls, errors, error rates)
-    - Format options: `full`, `summary`, `compact`
-    - Pagination: `page`, `pageSize`
-    - Filtering: `maxDepth`, `minCallCount`, `includeMetrics`
-- `systemHealthSummary`: Summarize service health and bottlenecks across a time window. Supports:
-    - Error rate and latency thresholds for degraded service detection
-    - Bottleneck operation analysis per service
-    - Filtering by service(s)
-    - Pagination and sample span inclusion
-    - Parameters: `startTime`, `endTime`, `includeDetails`, `errorRateThreshold`, `latencyThresholdMs`, `sampleSpanCount`, `bottleneckCount`, `service`, `services`
-- `metricAnomaliesDetect`: Detect anomalies in metric values based on statistical thresholds. Supports:
-    - Multiple threshold types: percentile-based (p99), standard deviation-based, or fixed value
-    - Different metric types: gauge, counter, and histogram metrics
-    - Service and metric field filtering
-    - Parameters: `startTime`, `endTime`, `metricField`, `metricType`, `service`, `thresholdType`, `thresholdValue`, `windowSize`, `maxResults`
-- `timeSeriesAnalysis`: Analyze time series data with statistical methods and pattern detection. Supports:
-    - Multiple analysis types: basic statistics, trend analysis, seasonality detection, outlier detection
-    - Customizable time intervals for data bucketing
-    - Service and metric field filtering
-    - Additional query string filtering
-    - Parameters: `startTime`, `endTime`, `metricField`, `interval`, `service`, `queryString`, `analysisType`
-- `logAnomaliesDetect`: Detect anomalies in log patterns based on frequency and rarity. Supports:
-    - Minimum occurrence threshold for rare message detection
-    - Service and log level filtering
-    - Additional query string filtering
-    - Parameters: `startTime`, `endTime`, `service`, `level`, `minCount`, `maxResults`, `queryString`
-- `traceFieldsGet`: Discover available trace fields with their types (supports service filtering)
-- `logFieldsGet`: Discover available log fields with their types and schemas (supports service filtering)
-- `metricsFieldsGet`: Discover available metric fields with their types (supports service filtering)
-
-### Service Discovery
-
-- **List Services**: "What services are available in the system? Use the `servicesGet` tool to list all services."
-- **Find Services**: "Are there any payment-related services? Use `servicesGet` with a search parameter."
-
-### Troubleshooting
-
-- **Error Traces**: "Find all error traces from the last 24 hours for the 'payment' service using `tracesQuery`."
-- **Recent Logs**: "Show me the most recent logs from the 'checkout' service using `logsQuery`."
-- **Resource Metrics**: "Get the CPU usage metrics for the 'api' service over the past hour using `metricsQuery`."
-- **Performance Anomalies**: "Detect spans with unusually high latency in the 'checkout' service using `spanDurationAnomaliesDetect`."
-
-### Incident Investigation
-
-- **Outage Analysis**: "Query traces during the outage period (2:00-3:00 PM today) for the 'authentication' service."
-- **Error Timeline**: "Find logs with error severity during the incident timeframe (May 23, 10:00-11:00 AM)."
-- **Authentication Issues**: "Find authentication failures or timeout errors during the incident using `logsQuery`."
-
-## 🔎 Example Queries
-
-Here are some example queries you can use with the OTEL MCP Server tools:
-
----
-
-## 🤖 LLM Prompt Library
-
-A collection of ready-to-use prompts for LLMs and users, designed for the OTEL MCP Server and Windsurf. All prompts support tree structure, filtering, and pagination where relevant.
-
-### Service Discovery
-- **List all services:**
-  ```javascript
-  mcp0_servicesGet({})
-  ```
-- **Find services matching a pattern:**
-  ```javascript
-  mcp0_servicesGet({ "search": "cart*" })
-  ```
-- **List services with a specific version:**
-  ```javascript
-  mcp0_servicesGet({ "version": "2.0.*" })
-  ```
-- **List services within a time range:**
-  ```javascript
-  mcp0_servicesGet({ "startTime": "2025-05-27T00:00:00Z", "endTime": "2025-05-28T00:00:00Z" })
-  ```
-
-### Trace Queries
-- **Find all error traces in the last hour:**
-  ```javascript
-  mcp0_tracesQuery({
-    "query": {
-      "search": "@timestamp:[now-1h TO now] AND status.code:ERROR",
-      "size": 100
     }
-  })
-  ```
-- **Detect spans with unusually high durations:**
-  ```javascript
-  mcp0_spanDurationAnomaliesDetect({
-    "startTime": "2025-05-27T00:00:00Z",
-    "endTime": "2025-05-28T00:00:00Z",
-    "service": "frontend",
-    "thresholdType": "p99",
-    "maxResults": 10
-  })
-  ```
-- **Find all traces for the checkout service:**
-  ```javascript
-  mcp0_tracesQuery({
-    "query": {
-      "search": "service.name:checkout",
-      "size": 100
-    }
-  })
-  ```
-
-### Metric Queries
-- **Find high CPU usage metrics:**
-  ```javascript
-  mcp0_metricsQuery({
-    "query": {
-      "search": "metric.name:system.cpu.usage AND metric.value:>0.8",
-      "size": 10
-    }
-  })
-  ```
-- **Get all latency metrics for payment service:**
-  ```javascript
-  mcp0_metricsQuery({
-    "query": {
-      "search": "service.name:payment AND name:*latency*",
-      "size": 100
-    }
-  })
-  ```
-- **Detect anomalies in CPU utilization metrics:**
-  ```javascript
-  mcp0_metricAnomaliesDetect({
-    "startTime": "2025-05-27T00:00:00Z",
-    "endTime": "2025-05-28T00:00:00Z",
-    "metricField": "metrics.system.cpu.utilization.value",
-    "metricType": "gauge",
-    "service": "frontend",
-    "thresholdType": "stddev",
-    "windowSize": 10,
-    "maxResults": 20
-  })
-  ```
-- **Detect anomalies in request counter metrics with a fixed threshold:**
-  ```javascript
-  mcp0_metricAnomaliesDetect({
-    "startTime": "2025-05-27T00:00:00Z",
-    "endTime": "2025-05-28T00:00:00Z",
-    "metricField": "metrics.http.server.request.count",
-    "metricType": "counter",
-    "service": "checkout",
-    "thresholdType": "fixed",
-    "thresholdValue": 1000,
-    "maxResults": 10
-  })
-  ```
-- **Analyze CPU utilization trends over time:**
-  ```javascript
-  mcp0_timeSeriesAnalysis({
-    "startTime": "2025-05-27T00:00:00Z",
-    "endTime": "2025-05-28T00:00:00Z",
-    "metricField": "metrics.system.cpu.utilization",
-    "interval": "1h",
-    "service": "recommendation",
-    "analysisType": "trend"
-  })
-  ```
-- **Detect seasonal patterns in service metrics:**
-  ```javascript
-  mcp0_timeSeriesAnalysis({
-    "startTime": "2025-05-20T00:00:00Z",
-    "endTime": "2025-05-28T00:00:00Z",
-    "metricField": "metrics.quotes",
-    "interval": "4h",
-    "service": "quote",
-    "analysisType": "seasonality"
-  })
-  ```
-- **Comprehensive analysis of memory usage metrics:**
-  ```javascript
-  mcp0_timeSeriesAnalysis({
-    "startTime": "2025-05-27T00:00:00Z",
-    "endTime": "2025-05-28T00:00:00Z",
-    "metricField": "metrics.process.runtime.jvm.memory.heap.used",
-    "interval": "30m",
-    "service": "cart",
-    "analysisType": "full"
-  })
-  ```
-
-### Log Queries
-- **Find all error logs for the cart service:**
-  ```javascript
-  mcp0_logsQuery({
-    "query": {
-      "search": "service.name:cart AND severity_text:ERROR",
-      "size": 100
-    }
-  })
-  ```
-- **Find logs with authentication failures:**
-  ```javascript
-  mcp0_logsQuery({
-    "query": {
-      "search": "authentication failure",
-      "size": 50
-    }
-  })
-  ```
-- **Detect anomalies in log patterns:**
-  ```javascript
-  mcp0_logAnomaliesDetect({
-    "startTime": "2025-05-27T00:00:00Z",
-    "endTime": "2025-05-28T00:00:00Z",
-    "service": "payment",
-    "level": "ERROR",
-    "minCount": 2,
-    "maxResults": 20
-  })
-  ```
-- **Find rare log messages across all services:**
-  ```javascript
-  mcp0_logAnomaliesDetect({
-    "startTime": "2025-05-27T00:00:00Z",
-    "endTime": "2025-05-28T00:00:00Z",
-    "queryString": "timeout OR connection refused",
-    "minCount": 1,
-    "maxResults": 50
-  })
-  ```
-
-### Service Dependency & Architecture
-- **Show the service dependency tree for all services in the last 24 hours:**
-```javascript
-mcp0_serviceArchitectureMap({
-  "startTime": "2025-05-27T00:00:00Z",
-  "endTime": "2025-05-28T00:00:00Z",
-  "format": "full"
-})
-```
-- **Show only high-traffic relationships (minCallCount = 100):**
-```javascript
-mcp0_serviceArchitectureMap({
-  "startTime": "2025-05-27T00:00:00Z",
-  "endTime": "2025-05-28T00:00:00Z",
-  "format": "full",
-  "minCallCount": 100
-})
-```
-- **Paginate through the service dependency tree:**
-```javascript
-mcp0_serviceArchitectureMap({
-  "startTime": "2025-05-27T00:00:00Z",
-  "endTime": "2025-05-28T00:00:00Z",
-  "format": "summary",
-  "page": 2,
-  "pageSize": 10
-})
-```
-
-### System Health Summary
-- **Summarize health and bottlenecks for all services in a time window:**
-```javascript
-mcp0_systemHealthSummary({
-  "startTime": "2025-05-27T00:00:00Z",
-  "endTime": "2025-05-28T00:00:00Z"
-})
-```
-- **Show detailed bottleneck operations for a specific service with custom thresholds:**
-```javascript
-mcp0_systemHealthSummary({
-  "startTime": "2025-05-27T00:00:00Z",
-  "endTime": "2025-05-28T00:00:00Z",
-  "service": "checkout",
-  "includeDetails": true,
-  "errorRateThreshold": 0.05,
-  "latencyThresholdMs": 1000,
-  "bottleneckCount": 3
-})
-```
-
-### Root Cause Analysis & Troubleshooting
-- **Incident investigation for a specific time window:**
-  ```javascript
-  mcp0_tracesQuery({
-    "query": {
-      "search": "@timestamp:[2025-05-27T14:00:00Z TO 2025-05-27T15:00:00Z] AND status.code:ERROR",
-      "size": 100
-    }
-  })
-  ```
-- **Find slow spans in payment and checkout services:**
-  ```javascript
-  mcp0_tracesQuery({
-    "query": {
-      "search": "service.name:(payment OR checkout) AND duration_ms:>1000",
-      "size": 100
-    }
-  })
-  ```
-- **Find authentication errors and correlate with logs:**
-  ```javascript
-  mcp0_logsQuery({
-    "query": {
-      "search": "authentication failure OR auth error",
-      "size": 100
-    }
-  })
-  ```
-
-### Time Series Analysis for Incident Investigation
-
-- **Analyze CPU spikes during an incident window:**
-  ```javascript
-  mcp0_timeSeriesAnalysis({
-    "startTime": "2025-05-27T14:00:00Z",
-    "endTime": "2025-05-27T16:00:00Z",
-    "metricField": "metrics.system.cpu.utilization",
-    "interval": "1m",
-    "service": "payment",
-    "analysisType": "outliers"
-  })
-  ```
-
-- **Detect changes in request patterns before an outage:**
-  ```javascript
-  mcp0_timeSeriesAnalysis({
-    "startTime": "2025-05-27T00:00:00Z",
-    "endTime": "2025-05-27T12:00:00Z",
-    "metricField": "metrics.http.server.request.count",
-    "interval": "5m",
-    "service": "frontend",
-    "analysisType": "trend"
-  })
-  ```
-
-- **Compare metrics before and during an incident:**
-  ```javascript
-  // Before incident
-  mcp0_timeSeriesAnalysis({
-    "startTime": "2025-05-26T12:00:00Z",
-    "endTime": "2025-05-27T00:00:00Z",
-    "metricField": "metrics.process.runtime.jvm.memory.heap.used",
-    "interval": "30m",
-    "service": "cart",
-    "analysisType": "basic"
-  })
-  
-  // During incident
-  mcp0_timeSeriesAnalysis({
-    "startTime": "2025-05-27T00:00:00Z",
-    "endTime": "2025-05-27T12:00:00Z",
-    "metricField": "metrics.process.runtime.jvm.memory.heap.used",
-    "interval": "30m",
-    "service": "cart",
-    "analysisType": "basic"
-  })
-  ```
-
----
-
-### Service Discovery
-
-```javascript
-// Get all services with names starting with "front"
-mcp0_servicesGet({
-  "search": "front*"
-})
-
-// Get all services with version 2.0.2
-mcp0_servicesGet({
-  "version": "2.0.2"
-})
-
-// Get all services with names containing "end" and versions starting with "v"
-mcp0_servicesGet({
-  "search": "*end*",
-  "version": "v*"
-})
-
-// Get all services within a specific time range
-mcp0_servicesGet({
-  "startTime": "2025-05-26T15:00:00Z",
-  "endTime": "2025-05-26T16:00:00Z"
-})
-```
-
-### Trace Queries
-
-```javascript
-// Query for traces with errors in the payment service
-mcp0_tracesQuery({
-  "query": {
-    "query": {
-      "bool": {
-        "must": [
-          { "term": { "service.name": "payment" } },
-          { "term": { "status.code": "ERROR" } }
-        ]
-      }
-    },
-    "size": 10,
-    "sort": [{ "@timestamp": "desc" }]
-  }
-})
-```
-
-### Log Queries
-
-```javascript
-// Query for error logs in the checkout service
-mcp0_logsQuery({
-  "query": {
-    "query": {
-      "bool": {
-        "must": [
-          { "term": { "service.name": "checkout" } },
-          { "term": { "severity.text": "ERROR" } }
-        ]
-      }
-    },
-    "size": 10,
-    "sort": [{ "@timestamp": "desc" }]
-  }
-})
-```
-
-### Metric Queries
-
-```javascript
-// Query for high CPU usage metrics
-mcp0_metricsQuery({
-  "query": {
-    "query": {
-      "bool": {
-        "must": [
-          { "term": { "metric.name": "system.cpu.usage" } },
-          { "range": { "metric.value": { "gt": 0.8 } } }
-        ]
-      }
-    },
-    "size": 10,
-    "sort": [{ "@timestamp": "desc" }]
-  }
-})
-```
-
-## 🔍 Field Discovery Examples
-
-The field discovery tools help you understand the data structure to build effective queries:
-
-### Trace Field Discovery
-
-```javascript
-// Find duration-related trace fields in the checkout service
-mcp0_traceFieldsGet({
-  "search": "duration",
-  "service": "checkout"
-})
-
-// Get all trace fields across multiple services
-mcp0_traceFieldsGet({
-  "services": ["payment", "inventory", "shipping"]
-})
-```
-
-### Log Field Discovery
-
-```javascript
-// Find error-related log fields
-mcp0_logFieldsGet({
-  "search": "error"
-})
-
-// Get log fields specific to the payment service
-mcp0_logFieldsGet({
-  "service": "payment"
-})
-```
-
-### Metric Field Discovery
-
-```javascript
-// Find CPU-related metric fields
-mcp0_metricsFieldsGet({
-  "search": "cpu"
-})
-
-// Get metric fields across multiple services
-mcp0_metricsFieldsGet({
-  "services": ["payment", "inventory", "shipping"]
-})
-```
-
-### Service Discovery
-
-```javascript
-// Get all available services
-mcp0_servicesGet({})
-
-// Find services matching a pattern
-mcp0_servicesGet({
-  "search": "payment"
-})
-
-```
-
-## 🔍 Advanced Query Capabilities
-
-All query tools (`logsQuery`, `tracesQuery`, `metricsQuery`) support powerful query capabilities through various parameters that map directly to Elasticsearch's native functionality.
-
-### Logical Operators
-
-- `AND`: Require all conditions to match (default operator)
-- `OR`: Match any of the conditions
-- `NOT`: Exclude results that match a condition
-- Parentheses `()`: Group conditions for complex logic
-
-### Field-Specific Searches
-
-Use the `field:value` syntax to search specific fields:
-
-```javascript
-// Search for errors in the frontend service
-mcp0_logsQuery({
-  "search": "severity_text:ERROR AND resource.attributes.service.name:frontend"
-})
-```
-
-### Time Range Queries
-
-Use range syntax for time-based queries:
-
-```javascript
-// Search for errors in the last hour
-mcp0_logsQuery({
-  "search": "@timestamp:[now-1h TO now] AND severity_text:ERROR"
-})
-
-// Search for high latency spans in a specific time window
-mcp0_tracesQuery({
-  "search": "@timestamp:[2025-05-27T00:00:00Z TO 2025-05-27T04:00:00Z] AND duration>1000000"
-})
-```
-
-### Wildcards and Regular Expressions
-
-Use wildcards for partial matching:
-
-```javascript
-// Search for metrics with names containing 'latency'
-mcp0_metricsQuery({
-  "search": "name:*latency*"
-})
-
-// Search for HTTP-related spans
-mcp0_tracesQuery({
-  "search": "attributes.http.*:* AND service.name:frontend"
-})
-```
-
-### Numeric Comparisons
-
-Use comparison operators for numeric fields:
-
-```javascript
-// Find high-value metrics
-mcp0_metricsQuery({
-  "search": "metric.value>100 AND service.name:cart"
-})
-
-// Find slow spans
-mcp0_tracesQuery({
-  "search": "duration>5000000 AND name:*checkout*"
-})
-```
-
-### Example Test Queries
-
-```javascript
-// Check available services
-mcp0_servicesGet({})
-
-// Find available trace fields
-mcp0_traceFieldsGet({})
-
-// Query for recent traces
-mcp0_tracesQuery({
-  "query": {
-    "query": { "match_all": {} },
-    "size": 10,
-    "sort": [{ "@timestamp": "desc" }]
-  }
-})
-
-// Using the simplified search parameter with logical query
-mcp0_logsQuery({
-  "search": "severity_text:ERROR AND resource.attributes.service.name:load-generator",
-  "size": 5
-})
-```
-
-### Advanced Elasticsearch Parameters
-
-All query tools now support additional Elasticsearch parameters for more advanced use cases:
-
-#### Result Tracking and Pagination
-
-```javascript
-// Get accurate hit counts for large result sets
-mcp0_logsQuery({
-  "search": "severity_text:ERROR",
-  "track_total_hits": true
-})
-
-// Efficient pagination through large result sets
-// First query to get initial results and sort values
-const initialResults = await mcp0_tracesQuery({
-  "search": "duration>1000000",
-  "size": 10,
-  "sort": [{"duration": "desc"}, {"@timestamp": "desc"}]
-});
-
-// Follow-up query using search_after with the sort values from the last result
-mcp0_tracesQuery({
-  "search": "duration>1000000",
-  "size": 10,
-  "sort": [{"duration": "desc"}, {"@timestamp": "desc"}],
-  "search_after": initialResults.hits.hits[initialResults.hits.hits.length-1].sort
-})
-```
-
-#### Performance and Timeout Controls
-
-```javascript
-// Set a timeout to prevent long-running queries
-mcp0_metricsQuery({
-  "search": "name:*latency*",
-  "timeout": "5s"
-})
-```
-
-#### Result Highlighting and Deduplication
-
-```javascript
-// Highlight search terms in results
-mcp0_logsQuery({
-  "search": "error",
-  "highlight": {
-    "fields": {
-      "body": {},
-      "message": {}
-    },
-    "pre_tags": ["<mark>"],
-    "post_tags": ["</mark>"]
-  }
-})
-
-// Deduplicate results by collapsing on a field
-mcp0_tracesQuery({
-  "search": "error",
-  "collapse": {
-    "field": "service.name"
-  }
-})
-```
-## 🔎 Error Handling
-
-All tools in the OTEL MCP Server provide structured error responses when issues occur. This makes it easier to diagnose and fix problems programmatically.
-
-### Error Response Format
-
-When an error occurs, tools return a consistent JSON structure:
-
-```json
-{
-  "error": true,
-  "type": "ElasticsearchDataError",
-  "message": "Error accessing trace data: index_not_found_exception",
-  "params": {
-    "query": { /* original query parameters */ }
   }
 }
 ```
 
-This structured approach provides several benefits:
+Note: You can use either `ELASTICSEARCH_URL` or `OPENSEARCH_URL` - both work.
 
-- **Programmatic Error Handling**: Clients can easily parse errors and handle them programmatically
-- **Improved Diagnostics**: The detailed error information makes it easier to diagnose and fix issues
-- **Consistent User Experience**: All tools handle errors in a consistent way
-
-## 💻 Conclusion
-
-The OTEL MCP Server provides a streamlined approach to querying OpenTelemetry data in Elasticsearch. By focusing on direct query capabilities and field discovery, it offers maximum flexibility while maintaining a simple, consistent interface.
-
-Key advantages:
-
-- **Direct Access**: Transparent access to Elasticsearch data without hiding query complexity
-- **Flexibility**: Full control over queries for maximum customization
-- **Discovery Support**: Tools to help understand the available data structure
-- **Minimal Abstraction**: No high-level abstractions that hide the underlying data model
-- **Consistent Error Handling**: Structured error responses across all tools
-
-## 🔄 Adaptive Tool Registration
-
-The OTEL MCP Server automatically adapts to the available data in your Elasticsearch instance:
-
-- If trace data is available, trace query tools (`tracesQuery`, `traceFieldsGet`) are registered
-- If metric data is available, metric query tools (`metricsQuery`, `metricsFieldsGet`) are registered
-- If log data is available, log query tools (`logsQuery`, `logFieldsGet`, `findLogs`) are registered
-
-This ensures that you only see tools that will work with your available data. If a particular telemetry type is not available, the corresponding tools will not be registered, preventing you from attempting to use tools that would fail.
-
-## 🧪 Testing with the OTEL Demo
-
-The OTEL MCP Server has been extensively tested with the official [OpenTelemetry Demo](https://github.com/open-telemetry/opentelemetry-demo) application, which provides a realistic microservices environment with complete telemetry data.
-
-### Kubernetes Setup
-
-1. **Deploy the OpenTelemetry Demo** using Helm:
-   ```bash
-   # Add the OpenTelemetry Helm repository
-   helm repo add open-telemetry https://open-telemetry.github.io/opentelemetry-helm-charts
-   helm repo update
-   
-   # Create namespace for the demo
-   kubectl create namespace opentelemetry-demo
-   
-   # Install the OpenTelemetry Demo using Helm
-   helm install opentelemetry-demo open-telemetry/opentelemetry-demo \
-     -n opentelemetry-demo \
-     --values demo/otel-demo-values.yaml
-   ```
-
-2. **Configure the OTEL Collector** using the provided values file:
-   ```bash
-   # The demo/otel-demo-values.yaml file already contains the necessary configuration:
-   # - Elasticsearch exporter with OTEL mapping mode
-   # - Proper pipeline configuration for traces, metrics, and logs
-   # - Kubernetes attribute processors
-   
-   # If you need to update the Elasticsearch endpoint, modify the values file:
-   sed -i 's|endpoint: http://elasticsearch-master:9200|endpoint: http://elasticsearch.elastic.svc.cluster.local:9200|g' demo/otel-demo-values.yaml
-   
-   # Update the OpenTelemetry Demo with the modified values
-   helm upgrade opentelemetry-demo open-telemetry/opentelemetry-demo \
-     -n opentelemetry-demo \
-     --values demo/otel-demo-values.yaml
-   ```
-   
-   The provided values file includes comprehensive configuration for the OpenTelemetry Collector, including:
-   - Elasticsearch exporter with OTEL mapping mode
-   - Kubernetes attributes extraction
-   - Resource processors
-   - Memory limiters and batch processors
-   - Proper service pipelines for all telemetry types
-
-3. **Deploy Elasticsearch** using the provided manifests:
-   ```bash
-   # Create namespace for Elasticsearch
-   kubectl create namespace elastic
-   
-   # Apply the Elasticsearch manifests
-   kubectl apply -f demo/elasticsearch-manifests/elasticsearch-service.yaml
-   kubectl apply -f demo/elasticsearch-manifests/elasticsearch-statefulset.yaml
-   kubectl apply -f demo/elasticsearch-manifests/elasticsearch-templates-configmap.yaml
-   kubectl apply -f demo/elasticsearch-manifests/elasticsearch-setup-job.yaml
-   
-   # For a complete setup with security (optional)
-   # kubectl apply -f demo/elasticsearch-manifests/elasticsearch-certs.yaml
-   # kubectl apply -f demo/elasticsearch-manifests/elasticsearch-credentials.yaml
-   ```
-   
-   These manifests provide a production-ready Elasticsearch setup with:
-   - Properly configured StatefulSet for data persistence
-   - Kubernetes Services for access
-   - Index templates optimized for OpenTelemetry data
-   - Optional security configuration
-
-4. **Connect with OTEL MCP Server**:
-   ```bash
-   # Port-forward Elasticsearch service to your local machine
-   kubectl port-forward -n elastic svc/elasticsearch 9200:9200 &
-   
-   # Run OTEL MCP Server with the forwarded Elasticsearch URL
-   ELASTICSEARCH_URL=http://localhost:9200 npx -y otel-mcp-server
-   ```
-
-   Or use the configuration for your LLM tool at the start of this readme.
-   
-5. **Verify the connection** by checking available services:
-   ```javascript
-   // Using the MCP Inspector or Windsurf, run:
-   mcp0_servicesGet({})
-   ```
-   
-   You should see the OpenTelemetry Demo services listed in the response, confirming that the OTEL MCP Server is successfully connected to Elasticsearch and retrieving telemetry data.
-
-4. **Connect your MCP client** (e.g., Windsurf) to start querying the data
-
-### Elasticsearch Compatibility
-
-- **Version Support**: Tested with Elasticsearch 8.x (8.12+ recommended for OTEL mapping mode)
-- **Index Patterns**: The server looks for `.ds-traces-*`, `.ds-metrics-*`, and `.ds-logs-*` indices
-- **Mapping Modes**: Supports both OTEL native mapping (recommended) and ECS mapping
-
-### Example Queries for OTEL Demo
-
-Once you have the demo running, try these queries to explore the data:
-
-```javascript
-// List all services in the demo
-mcp0_servicesGet({})
-
-// Find checkout service traces with errors
-mcp0_tracesQuery({
-  "query": {
-    "query": {
-      "bool": {
-        "must": [
-          { "term": { "Resource.service.name": "checkout" } },
-          { "term": { "status.code": "ERROR" } }
-        ]
-      }
-    }
-  }
-})
-
-// Get CPU usage metrics for the frontend service
-mcp0_metricsQuery({
-  "query": {
-    "query": {
-      "bool": {
-        "must": [
-          { "term": { "Resource.service.name": "frontend" } },
-          { "term": { "metric.name": "system.cpu.usage" } }
-        ]
-      }
-    }
-  }
-})
-```
-
-**Note:** For production environments, enable Elasticsearch security features with proper authentication and encryption.
-
-## 🚢 Deployment & Orchestration Notes
-
-**Note:** OTEL MCP Server is a stdio-based process. It is not meant to be deployed as a long-running HTTP/gRPC service. Instead, it should be launched by an MCP-compatible orchestrator (such as Windsurf, MCP Inspector, or another MCP tool) or run directly in your shell for local testing.
-
-- For most use cases, run the server locally with:
-  ```bash
-  npm start
-  ```
-- If containerizing, run it as a foreground process and connect its stdio to your orchestrator.
-- Do **not** deploy as a background service or expose as an HTTP endpoint (unless you have added a transport for that purpose).
-
-### Error Handling
-
-The server implements structured error handling for all tools. If a tool encounters an error, it will return a response with the following structure:
-
-```json
-{
-  "error": true,
-  "type": "ErrorType",
-  "message": "Detailed error message",
-  "params": {
-    // Original parameters that caused the error
-  }
-}
-```
-
-This makes it easier to debug issues and provide meaningful feedback to users.
-
-### Kubernetes (Helm or kubectl)
-1. **Deploy the OTEL Demo:**
-   - Follow the [OpenTelemetry Demo](https://github.com/open-telemetry/opentelemetry-demo) instructions for Kubernetes.
-
-2. **Deploy Elasticsearch** using the provided manifests:
-   ```bash
-   # Create namespace for Elasticsearch
-   kubectl create namespace elastic
-   
-   # Apply the Elasticsearch manifests
-   kubectl apply -f demo/elasticsearch-manifests/elasticsearch-service.yaml
-   kubectl apply -f demo/elasticsearch-manifests/elasticsearch-statefulset.yaml
-   kubectl apply -f demo/elasticsearch-manifests/elasticsearch-templates-configmap.yaml
-   kubectl apply -f demo/elasticsearch-manifests/elasticsearch-setup-job.yaml
-   ```
-
-3. **Run OTEL MCP Server:**
-   - Start the server as a stdio process from your shell, or as a subprocess of your MCP client/orchestrator (e.g., Windsurf):
-     ```bash
-     npm start
-     # or
-     node dist/server.js
-     ```
-   - Set `ELASTICSEARCH_URL` to the Elasticsearch service (e.g., `http://elasticsearch.elastic:9200`) or use port-forwarding:
-     ```bash
-     kubectl port-forward -n elastic svc/elasticsearch 9200:9200 &
-     ELASTICSEARCH_URL=http://localhost:9200 npm start
-     ```
-   - If running in a container, ensure stdio is connected to your orchestrator.
-
-### Docker Compose
-1. **Run the OTEL Demo:**
-   - Use the official Docker Compose setup from the [OpenTelemetry Demo](https://github.com/open-telemetry/opentelemetry-demo).
-2. **Configure Elasticsearch:**
-   - The demo includes Elasticsearch by default. Make sure it's properly configured with the OpenTelemetry templates.
-   - You can use the provided `demo/elasticsearch-templates` directory to apply the necessary templates.
-3. **Run OTEL MCP Server:**
-   - Start the server as a stdio process from your shell, or as a subprocess of your MCP client/orchestrator:
-     ```bash
-     npm start
-     ```
-   - Set `ELASTICSEARCH_URL` to the Elasticsearch service (e.g., `http://localhost:9200`).
-   - If running in a container, ensure stdio is connected to your orchestrator.
-
-**See the `demo/` directory for ready-to-use config files for both Kubernetes and Docker Compose.**
-## 🔍 Debugging
-
-Set the `DEBUG=1` environment variable to enable detailed logging:
+### For Developers
 
 ```bash
-DEBUG=1 npm start
-```
+# Clone and install
+git clone https://github.com/ryanwith/melchi.git
+cd melchi
+npm install
 
-This will show:
-- Request/response headers
-- Full request/response bodies
-- Elasticsearch query details
-- Error stack traces
+# Configure your connection
+cp .env.example .env
+# Edit .env with your Elasticsearch details
 
-## 🔎 Error Handling
-
-All tools return structured error responses when issues occur. For example:
-
-```json
-{
-  "error": true,
-  "type": "ElasticsearchDataError",
-  "message": "Error accessing trace data: index_not_found_exception",
-  "params": {
-    "query": { "match_all": {} }
-  }
-}
-```
-- Detailed error messages
-- Connection details
-
-## 💬 Contributing
-
-Contributions to the OTEL MCP Server are welcome! If you'd like to contribute:
-
-1. Fork the repository
-2. Create a feature branch
-3. Make your changes
-4. Submit a pull request
-
-## 🔒 License
-
-Built with ❤️ for the OpenTelemetry community!
-
-This project is licensed under the MIT License - see the [LICENSE](LICENSE) file for details.
-
-## Integration
-
-You can pipe commands to the server:
-```bash
-echo "query traces '{\"timeRange\": {\"start\": \"2023-01-01T00:00:00Z\", \"end\": \"2023-01-02T00:00:00Z\"}}'" | npm start
-```
-
-## Building for Production
-
-To build the TypeScript code to JavaScript:
-```bash
+# Build and run
 npm run build
+
+# Integrate with your MCP client using a direct node command to run dist/server.js
 ```
 
-The built files will be in the `dist` directory.
+## 📊 Available Capabilities
+
+### Query Tools
+- **Direct Queries**: Execute Elasticsearch queries for traces, metrics, and logs
+- **Service Discovery**: List and search for services in your system
+- **Field Discovery**: Explore available fields with wildcard support (e.g., "*.error", "span.*")
+
+### Analysis Tools
+- **Anomaly Detection**: Find outliers in metrics, traces, and log patterns
+- **Service Topology & Dependency Mapping**: 
+  - Discover service relationships from OpenTelemetry span parent-child relationships
+  - Detailed latency statistics per dependency (avg, min, max, p50, p95, p99)
+  - Error rates and success rates for each service connection
+  - Throughput metrics (calls per minute) between services
+  - Visualization-ready data with node sizes, edge widths, and color coding
+  - Automatic identification of critical services and bottlenecks
+- **Time Series Analysis**: Detect trends, seasonality, and anomalies in metrics
+- **Health Summaries**: Get instant system health reports with bottleneck identification
+
+### Correlation Tools
+- **Error Propagation**: Trace errors through your distributed system
+- **Incident Analysis**: Correlate logs, metrics, and traces during outages
+- **Performance Profiling**: Identify slow operations and resource bottlenecks
+
+## 🔧 Example Interactions
+
+### Analyzing Service Dependencies
+```
+You: "Show me service dependencies with high latency"
+
+AI: I'll analyze service dependencies and their performance metrics.
+
+[AI executes dependency analysis and returns]:
+Found 15 service dependencies. Here are the critical ones:
+
+1. checkout-service → payment-service
+   - Average latency: 450ms (95th percentile: 1200ms)
+   - Error rate: 2.3%
+   - Call volume: 1,250 calls/minute
+   
+2. frontend → recommendation-service  
+   - Average latency: 890ms (95th percentile: 2100ms)
+   - Error rate: 0.5%
+   - Call volume: 3,400 calls/minute
+   - ⚠️ This is a bottleneck - high latency affecting user experience
+
+The recommendation service is your primary bottleneck, with p95 latency over 2 seconds.
+```
+
+### Finding Performance Issues
+```
+You: "Why is the checkout service slow today?"
+
+AI: I'll analyze the checkout service performance. Let me:
+1. Check for latency anomalies
+2. Identify slow operations
+3. Look for error patterns
+
+[AI executes queries and returns]:
+The checkout service is experiencing 3x normal latency on the payment-processing operation. 
+This started at 2:15 PM and correlates with increased error rates from the payment gateway.
+The service is timing out after 5 seconds, causing cascading failures.
+```
+
+### Investigating Errors
+```
+You: "Find all authentication failures in the last hour"
+
+AI: I'll search for authentication failures across logs and traces.
+
+[AI executes queries and returns]:
+Found 847 authentication failures in the last hour:
+- 92% are "invalid token" errors from the mobile app (v2.3.1)
+- Failures spike every 15 minutes, suggesting a token refresh issue
+- All failures originate from 3 specific API endpoints
+- The pattern started after the 1:30 PM deployment
+```
+
+## 🌟 Key Benefits
+
+### Speed of Investigation
+- Reduce MTTR from hours to minutes
+- No need to context-switch between multiple tools
+- Instant correlation across data types
+
+### Lower Barrier to Entry
+- New team members can investigate issues immediately
+- No query language expertise required
+- Natural language is the only interface needed
+
+### Proactive Insights
+- AI can spot patterns humans might miss
+- Continuous analysis without manual intervention
+- Historical comparisons and trend detection
+
+### Unified Interface
+- One conversation thread for entire investigations
+- No need to jump between dashboards
+- Context preserved throughout the analysis
+
+## 🚀 Getting Started with Real Data
+
+### Using the OpenTelemetry Demo
+
+Test with realistic microservices data:
+
+```bash
+# Deploy the OTEL demo with Kubernetes
+kubectl create namespace otel-demo
+helm install demo open-telemetry/opentelemetry-demo -n otel-demo --values demo/otel-demo-values.yaml
+
+# Port-forward OpenSearch
+kubectl port-forward -n elastic svc/opensearch 9200:9200
+
+# Start your MCP Client with the following environment variables:
+# OPENSEARCH_URL=http://localhost:9200
+```
+
+### Try These Queries
+
+Once connected, explore your data:
+- "Show me all available services"
+- "Find errors in the frontend service"
+- "Analyze checkout service latency patterns"
+- "Detect anomalies in CPU usage"
+- "Map service dependencies with latency metrics"
+- "Show me the slowest service connections"
+- "Which services have the highest error rates?"
+- "Identify bottlenecks in the service topology"
+
+## 📚 Advanced Features
+
+### ML-Powered Analysis (Requires OpenAI API Key)
+- **Semantic log search**: Find similar error patterns using embeddings
+- **Automatic trace clustering**: Group similar issues together
+- **Time series forecasting**: Predict future metric trends
+
+To enable ML features, set the `OPENAI_API_KEY` environment variable.
+
+### Intelligent Correlation
+- Automatic correlation of traces, metrics, and logs
+- Service dependency tracking with error propagation analysis
+- Root cause analysis across distributed transactions
+
+### Flexible Deployment
+- Works with Elasticsearch 7.x/8.x and OpenSearch
+- Supports both OTEL and ECS mapping modes
+- Adapts to available data types automatically
+
+## 🤝 Contributing
+
+We welcome contributions! Whether it's adding new analysis tools, improving query capabilities, or enhancing documentation, your input helps make observability more accessible to everyone.
+
+## 📄 License
+
+MIT License - Built with ❤️ for the OpenTelemetry community
+
+---
+
+**Ready to transform how you interact with observability data?** Start having conversations with your telemetry today.
