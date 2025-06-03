@@ -160,11 +160,17 @@ npm run build
 ### Query Tools
 - **Direct Queries**: Execute Elasticsearch queries for traces, metrics, and logs
 - **Service Discovery**: List and search for services in your system
-- **Field Discovery**: Explore available fields and data structures
+- **Field Discovery**: Explore available fields with wildcard support (e.g., "*.error", "span.*")
 
 ### Analysis Tools
 - **Anomaly Detection**: Find outliers in metrics, traces, and log patterns
-- **Dependency Mapping**: Visualize service relationships and communication patterns
+- **Service Topology & Dependency Mapping**: 
+  - Discover service relationships from OpenTelemetry span parent-child relationships
+  - Detailed latency statistics per dependency (avg, min, max, p50, p95, p99)
+  - Error rates and success rates for each service connection
+  - Throughput metrics (calls per minute) between services
+  - Visualization-ready data with node sizes, edge widths, and color coding
+  - Automatic identification of critical services and bottlenecks
 - **Time Series Analysis**: Detect trends, seasonality, and anomalies in metrics
 - **Health Summaries**: Get instant system health reports with bottleneck identification
 
@@ -174,6 +180,29 @@ npm run build
 - **Performance Profiling**: Identify slow operations and resource bottlenecks
 
 ## 🔧 Example Interactions
+
+### Analyzing Service Dependencies
+```
+You: "Show me service dependencies with high latency"
+
+AI: I'll analyze service dependencies and their performance metrics.
+
+[AI executes dependency analysis and returns]:
+Found 15 service dependencies. Here are the critical ones:
+
+1. checkout-service → payment-service
+   - Average latency: 450ms (95th percentile: 1200ms)
+   - Error rate: 2.3%
+   - Call volume: 1,250 calls/minute
+   
+2. frontend → recommendation-service  
+   - Average latency: 890ms (95th percentile: 2100ms)
+   - Error rate: 0.5%
+   - Call volume: 3,400 calls/minute
+   - ⚠️ This is a bottleneck - high latency affecting user experience
+
+The recommendation service is your primary bottleneck, with p95 latency over 2 seconds.
+```
 
 ### Finding Performance Issues
 ```
@@ -251,7 +280,10 @@ Once connected, explore your data:
 - "Find errors in the frontend service"
 - "Analyze checkout service latency patterns"
 - "Detect anomalies in CPU usage"
-- "Map service dependencies"
+- "Map service dependencies with latency metrics"
+- "Show me the slowest service connections"
+- "Which services have the highest error rates?"
+- "Identify bottlenecks in the service topology"
 
 ## 📚 Advanced Features
 

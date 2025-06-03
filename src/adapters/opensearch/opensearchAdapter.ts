@@ -819,7 +819,8 @@ export class OpenSearchAdapter extends BaseSearchAdapter {
           // Collect duration for latency statistics
           const duration = spanDurationMap.get(`${traceId}:${spanId}`);
           if (duration && duration > 0) {
-            dep.durations.push(duration);
+            // Convert from microseconds to milliseconds
+            dep.durations.push(duration / 1000);
           }
         }
       }
