@@ -125,7 +125,7 @@ Add this to your MCP settings:
       "command": "npx",
       "args": ["-y", "otel-mcp-server"],
       "env": {
-      "OPENSEARCH_URL": "http://localhost:9200",
+        "OPENSEARCH_URL": "http://localhost:9200",
         "USERNAME": "elastic",
         "PASSWORD": "changeme",
         "OPENAI_API_KEY": "sk-..."  // Optional: for ML-powered features
@@ -306,7 +306,7 @@ To enable ML features, set the `OPENAI_API_KEY` environment variable.
 
 ## 🤝 Contributing
 
-We welcome contributions! Whether it's adding new analysis tools, improving query capabilities, or enhancing documentation, your input helps make observability more accessible to everyone.
+We welcome contributions! The greatest contribution is to try it out, and file issues according to the contribution guidelines. For direct contributions, whether it's adding new analysis tools, improving query capabilities, or enhancing documentation, your input helps make observability more accessible to everyone.
 
 ## 📄 License
 
