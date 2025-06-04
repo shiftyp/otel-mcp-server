@@ -41,6 +41,7 @@ export function getValueByPath(obj: any, path: string): any {
 export function buildTraceFilters(
   startTime: string,
   endTime: string,
+  telemetryFields: Record<string, string>,
   attributeKey?: string,
   service?: string,
   queryString?: string,
@@ -64,7 +65,7 @@ export function buildTraceFilters(
     if (attributeKey === 'trace.id' || attributeKey === 'TraceId') {
       filters.push({
         exists: {
-          field: 'trace.id'
+          field: telemetryFields.traceId
         }
       });
     } else {
@@ -78,7 +79,7 @@ export function buildTraceFilters(
     // When using text content, ensure we have trace data by requiring trace.id
     filters.push({
       exists: {
-        field: 'trace.id'
+        field: telemetryFields.traceId
       }
     });
   }
@@ -89,13 +90,13 @@ export function buildTraceFilters(
     if (service.includes('*')) {
       filters.push({
         wildcard: {
-          'resource.attributes.service.name': service
+          [telemetryFields.service]: service
         }
       });
     } else {
       filters.push({
         term: {
-          'resource.attributes.service.name': service
+          [telemetryFields.service]: service
         }
       });
     }

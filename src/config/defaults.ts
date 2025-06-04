@@ -30,12 +30,13 @@ export const defaultConfig: Config = {
       logs: 'logs-*'
     },
     fields: {
-      service: 'service.name',
+      service: 'Resource.service.name', // Corrected path
       timestamp: '@timestamp',
-      traceId: 'trace.id',
-      spanId: 'span.id',
-      duration: 'duration',
-      status: 'status.code'
+      traceId: 'TraceId',               // Corrected path
+      spanId: 'SpanId',                 // Corrected path
+      duration: 'Duration',             // Corrected path
+      status: 'Attributes.http.status_code', // Corrected path for HTTP status
+      spanName: 'Name'                  // Added for span name feature
     }
   },
   ml: {

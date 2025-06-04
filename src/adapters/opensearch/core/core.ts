@@ -164,7 +164,9 @@ export class OpenSearchCore {
           url,
           status: error.response?.status,
           statusText: error.response?.statusText,
-          error: error.response?.data?.error || error.message,
+          error: typeof error.response?.data?.error === 'object' && error.response?.data?.error !== null 
+                 ? JSON.stringify(error.response.data.error) 
+                 : (error.response?.data?.error || error.message),
         });
         
         // Throw the error with additional context

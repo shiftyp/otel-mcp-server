@@ -254,8 +254,18 @@ export class TraceClusteringTool extends BaseTool<typeof TraceClusteringSchema> 
     const errorSamples = samples.filter((s: any) => s.status === 'ERROR' || s.error);
     if (errorSamples.length > samples.length * 0.5) {
       const errorMessages = errorSamples
-        .map((s: any) => s.error_message || s.error)
-        .filter(Boolean);
+        .map((s: any) => {
+          // Prioritize string error_message, then string s.error, otherwise null
+          if (typeof s.error_message === 'string' && s.error_message.trim() !== '') {
+            return s.error_message;
+          }
+          // Check if s.error is a string and not just a boolean true
+          if (typeof s.error === 'string' && s.error.trim() !== '') {
+            return s.error;
+          }
+          return null; // Explicitly return null if no suitable string message is found
+        })
+        .filter((msg): msg is string => typeof msg === 'string'); // Ensure only actual strings proceed
       
       if (errorMessages.some((msg: string) => msg.toLowerCase().includes('timeout'))) {
         hints.push('Timeout errors detected - check service timeouts and circuit breakers');

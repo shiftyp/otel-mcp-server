@@ -5,6 +5,7 @@
  */
 
 import { logger } from '../../../../utils/logger.js';
+import { ConfigLoader } from '../../../../config/index.js';
 import { TracesAdapterCore } from '../core/adapter.js';
 import { SearchEngineType } from '../../../base/searchAdapter.js';
 import { createSamplingAggregation, SamplingOptions } from '../../ml/sampling.js';
@@ -80,25 +81,26 @@ export class TraceAttributeClustering {
     options: TraceClusteringWithSamplingOptions
   ): Promise<TraceClusteringResult> {
     try {
+      const config = ConfigLoader.get();
+      const telemetryFields = config.telemetry.fields;
+
       const {
-        clusterCount = 5,
-        minClusterSize = 3,
+        clusterCount = config.ml.clustering.defaultNumClusters || 5,
+        minClusterSize = config.ml.clustering.minClusterSize || 3,
         includeOutliers = true,
         enableSampling = true,
-        samplingPercent = 10,
-        maxSamples = 100,
-        embeddingBatchSize = 3,
-        useTextContent = false,
-        textFields = [],
+        samplingPercent = 10, // Consider making these configurable too
+        maxSamples = 100,    // Consider making these configurable too
+        embeddingBatchSize = config.ml.embedding.batchSize || 3,
+        // useTextContent and textFields from options seem unused if useTextContentExtraction is hardcoded true
         excludeVectors = false
       } = options;
 
-      // Always use text content extraction
+      // This specific implementation path focuses on text content extraction and clustering
       const useTextContentExtraction = true;
 
-      // Use the logs-generic-default index where trace data is stored
-      // We know this index contains trace data based on our findLogs query
-      const indexPattern = 'logs-generic-default';
+      // Use the configured trace index
+      const indexPattern = config.telemetry.indices.traces;
 
       // Log the configuration for debugging
       logger.info('[TraceAttributeClustering] Configuration', {
@@ -107,14 +109,14 @@ export class TraceAttributeClustering {
         startTime,
         endTime,
         samplingPercent,
-        maxSamples,
-        textFields
-      }); // Use the logs index where trace data is available
+        maxSamples
+        // textFields from options is not used when useTextContentExtraction is true
+      });
 
       // Add debug logging
       logger.debug('[TraceAttributeClustering] Starting clustering with index pattern', {
         indexPattern,
-        useTextContent,
+        useTextContent: useTextContentExtraction, // Log what's actually being used
         attributeKey,
         startTime,
         endTime,
@@ -150,7 +152,7 @@ export class TraceAttributeClustering {
       // Log the retrieval approach
       logger.info('[TraceAttributeClustering] Using memory-efficient streaming approach for trace clustering', {
         attributeKey,
-        useTextContent,
+        useTextContent: useTextContentExtraction, // Log what's actually being used
         startTime,
         endTime,
         samplingPercent,
@@ -165,121 +167,78 @@ export class TraceAttributeClustering {
       const { generateAttributeEmbeddingsStreaming } = await import('./embeddings.js');
 
       // Function to clean and format trace data for better clustering
-      const cleanTraceTextContent = (source: any, traceId: string): string => {
-        // Initialize array to store meaningful text parts
+      const cleanTraceTextContent = (source: any, docTraceId: string): string => {
         const textParts: string[] = [];
 
-        // Extract trace ID
-        if (source.trace?.id) {
-          textParts.push(`trace:${source.trace.id}`);
-        }
+        const addPart = (key: string, value: any) => {
+          if (value !== undefined && value !== null && String(value).trim() !== '') {
+            textParts.push(`${key}:${String(value).trim()}`);
+          }
+        };
 
-        // Extract span ID if available
-        if (source.span?.id) {
-          textParts.push(`span:${source.span.id}`);
-        }
+        addPart('traceId', getValueByPath(source, telemetryFields.traceId));
+        addPart('spanId', getValueByPath(source, telemetryFields.spanId));
+        addPart('service', getValueByPath(source, telemetryFields.service));
+        addPart('operation', getValueByPath(source, telemetryFields.spanName));
+        // duration is numeric, typically not part of text content for clustering unless binned
+        // addPart('duration', getValueByPath(source, telemetryFields.duration)); 
+        addPart('status', getValueByPath(source, telemetryFields.status));
 
-        // Extract URL path if available (common in our logs)
-        if (source.url?.path) {
-          textParts.push(`path:${source.url.path}`);
-        }
+        // Attempt to get more specific HTTP fields using common patterns if not directly configured
+        // These supplement the configured telemetryFields.status
+        const httpMethod = getValueByPath(source, 'Attributes.http.method') || getValueByPath(source, 'http.method');
+        addPart('httpMethod', httpMethod);
 
-        // Extract service name if available
-        if (source.service?.name) {
-          textParts.push(`service:${source.service.name}`);
-        }
-
-        // Extract the message field which often contains HTTP info
-        if (source.message) {
-          // Extract HTTP method, path, and status code from message if possible
-          const httpMatch = source.message.match(/"(GET|POST|PUT|DELETE|PATCH)\s+([^\s]+)\s+HTTP\/[\d\.]+"\s+(\d+)/);
+        const httpTarget = getValueByPath(source, 'Attributes.http.target') || 
+                           getValueByPath(source, 'Attributes.url.path') || 
+                           getValueByPath(source, 'http.target') || 
+                           getValueByPath(source, 'url.path');
+        addPart('httpTarget', httpTarget);
+        
+        // Fallback for HTTP info from log message (if source.message exists and is a log line)
+        const message = getValueByPath(source, 'message');
+        if (typeof message === 'string') {
+          const httpMatch = message.match(/"(GET|POST|PUT|DELETE|PATCH)\s+([^\s"]+)\s+HTTP\/[\d\.]+"\s+(\d+)/);
           if (httpMatch) {
-            const [, method, path, status] = httpMatch;
-            textParts.push(`method:${method}`);
-            textParts.push(`endpoint:${path}`);
-            textParts.push(`status:${status}`);
+            const [, parsedMethod, parsedPath, parsedStatus] = httpMatch;
+            if (!httpMethod) addPart('httpMethod', parsedMethod);
+            if (!httpTarget) addPart('httpTarget', parsedPath);
+            if (!getValueByPath(source, telemetryFields.status) && parsedStatus) addPart('statusMsg', parsedStatus);
           } else {
-            // If no HTTP pattern found, use the whole message
-            textParts.push(source.message);
+            // Optionally include part of the message if it's not an HTTP log and not too long
+            // if (message.length < 200) addPart('messageSnippet', message.substring(0,50));
           }
         }
 
-        // Extract HTTP method and target if available (common in traces)
-        if (source.http) {
-          const httpObj = source.http;
-          const method = httpObj.method || httpObj.Method || '';
-          const target = httpObj.target || httpObj.url || httpObj.path || '';
-          const statusCode = httpObj.status_code || httpObj.statusCode || '';
+        // Additional service context if available and not captured by telemetryFields.service
+        addPart('serviceNamespace', getValueByPath(source, 'Resource.service.namespace'));
+        addPart('serviceVersion', getValueByPath(source, 'Resource.service.version'));
+        addPart('serviceInstanceId', getValueByPath(source, 'Resource.service.instance.id'));
 
-          if (method) textParts.push(`method:${method}`);
-          if (target) textParts.push(`endpoint:${target}`);
-          if (statusCode) textParts.push(`status:${statusCode}`);
-        }
-
-        // Extract service information
-        if (source.service) {
-          const serviceObj = source.service;
-          const serviceName = serviceObj.name || serviceObj.Name || '';
-          if (serviceName) textParts.push(`service:${serviceName}`);
-        }
-
-        // Extract error information if present
-        if (source.error || source.exception) {
-          const errorObj = source.error || source.exception;
-          const errorMsg = errorObj.message || errorObj.Message || 'error';
-          textParts.push(`error:${errorMsg}`);
-        }
-
-        // Extract key attributes and recursively break down objects into strings
-        if (source.attributes || source.Attributes) {
-          const attrs = source.attributes || source.Attributes;
-
-          // Recursive function to process nested objects
-          const processAttributeValue = (prefix: string, value: any) => {
-            if (value === null || value === undefined) {
-              return;
-            }
-
-            // Skip trace/span IDs
-            if (prefix.toLowerCase().includes('id')) {
-              return;
-            }
-
-            if (typeof value === 'object' && !Array.isArray(value)) {
-              // Process nested object by recursively calling with prefixed keys
-              Object.entries(value).forEach(([nestedKey, nestedValue]) => {
-                processAttributeValue(`${prefix}.${nestedKey}`, nestedValue);
-              });
-            } else if (Array.isArray(value)) {
-              // For arrays, include each element with its index
-              value.forEach((item, index) => {
-                if (typeof item === 'object' && item !== null) {
-                  processAttributeValue(`${prefix}[${index}]`, item);
-                } else {
-                  textParts.push(`${prefix}[${index}]:${item}`);
+        // Extract some generic attributes if they exist, being selective to avoid noise
+        const generalAttributes = getValueByPath(source, 'Attributes');
+        if (typeof generalAttributes === 'object' && generalAttributes !== null) {
+          for (const [key, value] of Object.entries(generalAttributes)) {
+            // Include only if not already captured and value is simple
+            if (!key.startsWith('http.') && !key.startsWith('url.') && !key.startsWith('service.')) {
+              if (typeof value === 'string' || typeof value === 'number' || typeof value === 'boolean') {
+                if (String(value).length < 100) { // Avoid very long attribute values
+                   addPart(`attr_${key.replace(/\./g, '_')}`, value);
                 }
-              });
-            } else {
-              // For primitive values, add them directly
-              textParts.push(`${prefix}:${value}`);
+              }
             }
-          };
-
-          // Process each attribute
-          Object.entries(attrs).forEach(([key, value]) => {
-            processAttributeValue(key, value);
-          });
+          }
         }
 
-        // Return the cleaned text content
-        return textParts.join(' ');
+        return textParts.filter(p => p !== null && p !== undefined).join(' | ');
       };
 
       // Build filters for the search query
       const filters = buildTraceFilters(
         startTime,
         endTime,
-        'text_content', // Always use text_content as the attribute key
+        telemetryFields, // Pass the configured telemetryFields
+        attributeKey,    // Pass the original attributeKey (or undefined if not applicable for text content)
         options.service,
         options.queryString,
         true // useTextContent
@@ -293,7 +252,7 @@ export class TraceAttributeClustering {
           bool: {
             must: [
               // Ensure we have trace data by requiring trace.id field
-              { exists: { field: "trace.id" } }
+              { exists: { field: telemetryFields.traceId } }
             ],
             filter: filters
           }
@@ -321,7 +280,7 @@ export class TraceAttributeClustering {
         pageSize,
         maxDocsToProcess,
         samplingRate,
-        useTextContent,
+        useTextContent: useTextContentExtraction, // Explicitly use the determined value
         attributeKey,
         textExtractor: cleanTraceTextContent,
         attributeExtractor: getValueByPath
@@ -396,7 +355,10 @@ export class TraceAttributeClustering {
       }
 
       // Perform streaming clustering with error handling
-      const clusteringResult = await performStreamingClusteringWithErrorHandling(
+      const clusteringResult: {
+        clusters: { [key: string]: AttributeValueWithEmbedding[] };
+        outliers: AttributeValueWithEmbedding[];
+      } | null = await performStreamingClusteringWithErrorHandling(
         client,
         attributeKey || 'text_content',
         [], // Empty array as we're using streaming
@@ -423,7 +385,8 @@ export class TraceAttributeClustering {
           samplingEnabled: !!enableSampling,
           samplingPercent: samplingPercent || 100,
           sampledValues: validValues,
-          message: 'Clustering failed'
+          error: 'Streaming clustering failed',
+          message: 'Clustering process did not complete successfully.'
         };
       }
 

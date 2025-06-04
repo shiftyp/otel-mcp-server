@@ -484,23 +484,27 @@ export class OpenSearchAdapter extends BaseSearchAdapter {
         id: cluster.id || index,
         size: cluster.values ? cluster.values.length : 0,
         centroid: {
-          // Extract key features from cluster
-          'span.name': cluster.label || `Cluster ${index}`,
           'service.name': this.extractCommonService(cluster.values),
-          'duration': this.calculateAverageDuration(cluster.values) // Already in milliseconds
+          'span.name': this.extractCommonOperation(cluster.values),
+          'duration': this.calculateAverageDuration(cluster.values) // Remains 0 for now
         },
-        samples: cluster.values ? cluster.values.slice(0, 10).map((value: any) => ({
-          id: value.traceId || value.id,
-          trace_id: value.traceId || value.id,
-          'span.name': value.spanName || value.operation || 'unknown',
-          'service.name': value.serviceName || value.service || 'unknown',
-          duration: (value.duration || 0) / 1000, // Convert microseconds to milliseconds
-          status: value.status || 'OK',
-          error: value.error || false,
-          error_message: value.errorMessage,
-          // Include the actual text content that was clustered
-          clustered_text: value.value || value.text
-        })) : []
+        samples: cluster.values ? cluster.values.slice(0, 10).map((valueItem: any) => {
+          const clusteredText = valueItem.value || valueItem.text;
+          const parsedText = this.parseClusteredText(clusteredText);
+          const isErrorStatus = parsedText.status?.toUpperCase() === 'ERROR' || String(parsedText.status).startsWith('2'); // OTEL status code 2 is ERROR
+
+          return {
+            id: parsedText.traceId || valueItem.traceId || valueItem.id,
+            trace_id: parsedText.traceId || valueItem.traceId || valueItem.id,
+            'span.name': parsedText.operation,
+            'service.name': parsedText.service,
+            duration: (valueItem.duration || 0) / 1000, // This will likely be 0 as duration is not in clustered_text
+            status: parsedText.status || valueItem.status || 'OK',
+            error: valueItem.error !== undefined ? valueItem.error : isErrorStatus,
+            error_message: valueItem.errorMessage,
+            clustered_text: clusteredText
+          };
+        }) : []
       }));
 
       return {
@@ -537,6 +541,34 @@ export class OpenSearchAdapter extends BaseSearchAdapter {
     }
   }
 
+  private parseClusteredText(text: string | undefined): { service: string; operation: string; traceId?: string; spanId?: string; status?: string } {
+    const parsed: { service: string; operation: string; traceId?: string; spanId?: string; status?: string } = {
+      service: 'unknown',
+      operation: 'unknown',
+    };
+    if (!text) {
+      return parsed;
+    }
+
+    const parts = text.split(' | ');
+    parts.forEach(part => {
+      const [key, ...valueParts] = part.split(':');
+      const value = valueParts.join(':').trim(); // Handle cases where value might contain ':'
+      if (key === 'service') {
+        parsed.service = value || 'unknown';
+      } else if (key === 'operation') {
+        parsed.operation = value || 'unknown';
+      } else if (key === 'traceId') {
+        parsed.traceId = value;
+      } else if (key === 'spanId') {
+        parsed.spanId = value;
+      } else if (key === 'status') {
+        parsed.status = value;
+      }
+    });
+    return parsed;
+  }
+
   /**
    * Helper to extract common service from cluster values
    */
@@ -544,14 +576,28 @@ export class OpenSearchAdapter extends BaseSearchAdapter {
     if (!values || values.length === 0) return 'unknown';
 
     const serviceCounts: Record<string, number> = {};
-    values.forEach(value => {
-      const service = value.serviceName || value.service || 'unknown';
-      serviceCounts[service] = (serviceCounts[service] || 0) + 1;
+    values.forEach(valueItem => {
+      const parsedText = this.parseClusteredText(valueItem.value || valueItem.text);
+      serviceCounts[parsedText.service] = (serviceCounts[parsedText.service] || 0) + 1;
     });
 
     // Return the most common service
     return Object.entries(serviceCounts)
       .sort(([, a], [, b]) => b - a)[0]?.[0] || 'unknown';
+  }
+
+  private extractCommonOperation(values: any[]): string {
+    if (!values || values.length === 0) return 'unknown';
+
+    const operationCounts: Record<string, number> = {};
+    values.forEach(valueItem => {
+      const parsedText = this.parseClusteredText(valueItem.value || valueItem.text);
+      operationCounts[parsedText.operation] = (operationCounts[parsedText.operation] || 0) + 1;
+    });
+
+    if (Object.keys(operationCounts).length === 0) return 'unknown';
+
+    return Object.entries(operationCounts).reduce((a, b) => (a[1] > b[1] ? a : b))[0];
   }
 
   /**
