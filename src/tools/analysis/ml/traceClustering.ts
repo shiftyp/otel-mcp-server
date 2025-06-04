@@ -265,7 +265,7 @@ export class TraceClusteringTool extends BaseTool<typeof TraceClusteringSchema> 
           }
           return null; // Explicitly return null if no suitable string message is found
         })
-        .filter((msg): msg is string => typeof msg === 'string'); // Ensure only actual strings proceed
+        .filter((msg: unknown): msg is string => typeof msg === 'string'); // Ensure only actual strings proceed
       
       if (errorMessages.some((msg: string) => msg.toLowerCase().includes('timeout'))) {
         hints.push('Timeout errors detected - check service timeouts and circuit breakers');
